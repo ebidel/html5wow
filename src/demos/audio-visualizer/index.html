@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<!--
+Copyright 2011 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Author: Eric Bidelman (ericbidelman@chromium.org)
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<title>Chrome Audio Visualizer</title>
+<style>
+html, body {
+  height: 100%;
+  overflow-y: hidden;
+}
+body {
+  color: #333;
+  font: 10pt 'Droid Sans', Arial;
+  /*background: -webkit-radial-gradient(center center, #fff, #bbb) no-repeat;*/
+  display: -webkit-box;
+  -webkit-box-align: center;
+  -webkit-box-pack: center;
+  box-sizing: border-box;
+}
+/*
+#svgcircle:hover circle {
+  fill: green !important;
+}
+#svgcircle {
+  width: 100px;
+  height: 100px;
+}*/
+.hidden {
+  display: none !important;
+}
+#main {
+  -webkit-perspective: 1000;
+  -webkit-transform-style: preserve-3d;
+  display: -webkit-box;
+  -webkit-box-align: center;
+  -webkit-box-orient: vertical;
+  box-sizing: border-box;
+}
+#main > section {
+  text-align: center;
+  background: -webkit-linear-gradient(top, #999, #333 10%, #333 40%, black 90%, black) no-repeat;
+  border-radius: 50px;
+  z-index: 100;
+  position: relative;
+  margin-top: 8em;
+  padding: 15px 0;
+  box-shadow: 1px 2px 5px rgba(0,0,0,0.5);
+}
+input[type="range"]{
+  -webkit-appearance: none !important;
+  background-color: #555;
+  box-shadow: 0 -1px 1px rgba(255,255,255,0.5) inset;
+  border-radius: 10px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  width: 20px;
+  height: 8px;
+  box-shadow: 1px 1px 5px rgba(0,0,0,1);
+  cursor: pointer;
+  border-top: 1px solid #fff;
+  background: #ccc -webkit-linear-gradient(top, rgb(240, 240, 240), rgb(210, 210, 210));
+}
+#fft {
+  /*background: -webkit-linear-gradient(top, #fff, #ddd);*/
+  /*border-radius: 20px;
+  border: 2px solid #eee;*/
+  background: -webkit-linear-gradient(top, white 80%, #ddd) no-repeat;
+  -webkit-mask-image: url(circle2.svg);
+  -webkit-mask-position: 50% 100%;
+  -webkit-mask-size: 75% 100%;
+  -webkit-mask-repeat: no-repeat;
+  /*-webkit-mask-box-image: url(mask.png) 0 stretch;*/
+
+  -webkit-transition: all 2s ease-in-out;
+}
+#fft.open {
+  -webkit-mask-size: 150% 125%;
+}
+.reflect {
+  -webkit-box-reflect: below 10px -webkit-linear-gradient(top, transparent, transparent 70%, white);
+}
+#fft.html5-logo {
+  -webkit-mask-image: url(HTML5_Badge2.svg);
+  -webkit-mask-position: 50% 50%;
+  -webkit-mask-size: 100% 100%;
+ /* background: -webkit-linear-gradient(top, white, rgba(239, 101, 42, 0.1)) no-repeat;*/
+  background: rgba(239, 101, 42, 0.1);
+  -webkit-transition: none;
+}
+@-webkit-keyframes rotate {
+  /*0% {
+    -webkit-transform: translate3d(0, 0, 0) rotate3d(0,0,0,0deg);
+  }
+  25% {
+    -webkit-transform: translate3d(-100px, 0, 0) rotate3d(0,1,0,-180deg);
+  }
+  50% {
+    -webkit-transform: translate3d(0, 0, 0) rotate3d(0,0,0,0);
+  }
+  75% {
+    -webkit-transform: translate3d(100px, 0, 0) rotate3d(0,1,0,180deg);
+  }
+  100% {
+    -webkit-transform: translate3d(0, 0, 0) rotate3d(0,0,0,0deg);
+  }*/
+  from {
+    -webkit-transform: rotateY(0deg);
+  }
+  to {
+    -webkit-transform: rotateY(360deg);
+  }
+}
+#fft.html5-logo.animate {
+  -webkit-animation-name: rotate;
+  -webkit-animation-duration: 10s;
+  -webkit-animation-timing-function: ease-in-out;
+  -webkit-transform-origin: 50% 50%;
+  -webkit-animation-iteration-count: infinite;
+  /*-webkit-animation-direction: alternate;*/
+}
+button, .button:before {
+  outline: none;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+  text-shadow: 1px 1px #fff;
+  font-size: 14pt;
+  color: black;
+  background: -webkit-linear-gradient(top, #F9F9F9 40%, #E3E3E3 70%);
+  border: 1px solid #999;
+  border-radius: 3px;
+  padding: 5px 8px;
+  margin: 0;
+  vertical-align: middle;
+}
+button:not([disabled]):active,
+.button:active:before {
+  background: -webkit-linear-gradient(top, #E3E3E3 40%, #F9F9F9 70%);
+}
+button[disabled],
+.button[disabled] {
+  color: #ccc;
+}
+.button {
+  height: 30px;
+  width: 76px;
+}
+.button::-webkit-file-upload-button,
+.button::-moz-file-upload-button {
+  visibility: hidden;
+}
+.button:before {
+  content: 'Load file';
+  display: inline-block;
+}
+button:not([disabled]):hover,
+.button:not([disabled]):hover:before {
+  border-color: #ffcc00;
+}
+#gain {
+  width: 58%;
+  margin: 10px 0 0 0;
+  display: inline-block;
+}
+#buttons, #meters {
+  display: inline-block;
+  vertical-align: middle;
+}
+#meters {
+  margin-left: 0.5em;
+}
+#meters span {
+  width: 15px;
+  display: inline-block;
+  font-weight: 700;
+}
+#meters meter {
+  /*-webkit-appearance: relevancy-level-indicator;*/
+  width: 100px;
+}
+details {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 10;
+  background: rgba(255,255,255,0.5);
+  border-radius: 10px;
+  padding: 5px;
+  border: 1px solid #eee;
+}
+details span {
+  display: inline-block;
+  width: 90px;
+}
+
+.icon {
+  width: 250px;
+  height: 250px;
+  position: relative;
+  -webkit-perspective: 1500;
+}
+
+/* White circle in the middle */
+.icon:before {
+  content: '';
+
+  position: absolute;
+  left: 30%;
+  top: 30%;
+  width: 40%;
+  height: 40%;
+  z-index: -1;
+
+  background: rgb(240, 240, 240);
+  border-radius: 100%;
+}
+
+.icon div {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+
+  background-size: 100%;
+  background-repeat: no-repeat;
+
+  -webkit-transition: -webkit-transform 100ms ease-in-out;
+}
+.red {
+  background-image: url(red_small.png);
+}
+.green {
+  background-image: url(green_small.png);
+}
+.yellow {
+  background-image: url(yellow_small.png);
+}
+.blue {
+  background-image: url(blue_small.png);
+  /*-webkit-transform: scale(0.5);*/
+}
+
+/* Animations */
+@-webkit-keyframes explode {
+  0% { -webkit-transform: scale(.5) translateZ(0); z-index: 100; }
+  15% { -webkit-transform: scale(.6) translateZ(100px); z-index: 200; }
+  80% { -webkit-transform: scale(.5) translateZ(0); z-index: 100; }
+  100% { -webkit-transform: scale(.5) translateZ(0); z-index: 100; }
+}
+
+@-webkit-keyframes spin {
+  0% { -webkit-transform: rotateZ(0); }
+  100% { -webkit-transform: rotateZ(360deg); }
+}
+
+.icon {
+  -webkit-animation-name: spin;
+  -webkit-animation-duration: 20s;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: linear;
+}
+/*
+.yellow {
+  -webkit-animation-name: explode;
+  -webkit-animation-duration: 3s;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: ease-out;
+  -webkit-animation-fill-mode: both;
+}
+.green {
+  -webkit-animation-name: explode;
+  -webkit-animation-duration: 3s;
+  -webkit-animation-delay: 1s;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: ease-out;
+  -webkit-animation-fill-mode: both;
+}
+.red {
+  -webkit-animation-name: explode;
+  -webkit-animation-duration: 3s;
+  -webkit-animation-delay: 2s;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: ease-out;
+  -webkit-animation-fill-mode: both;
+}*/
+
+.android {
+  position: relative;
+  -webkit-transform: scale(0.6);
+  -moz-transform: scale(0.6);
+  -o-transform: scale(0.6);
+  -webkit-transition: all 0.3s ease-in-out;
+}
+.android header {
+  position: relative;
+  width: 220px;
+  height: 291px;
+  background: #A4C639;
+  -webkit-border-radius: 145px 145px 35px 35px;
+  -moz-border-radius: 145px 145px 35px 35px;
+  border-radius: 145px 145px 35px 35px;
+  display: inline-block;
+}
+.android .antenna {
+  position: absolute;
+  z-index: -1;
+  width: 7px;
+  height: 45px;
+  left: 48px;
+  top: -27px;
+  background: #A4C639;
+  -webkit-border-radius: 25px;
+  -moz-border-radius: 25px;
+  border-radius: 25px;
+  -webkit-transform: rotate(-29deg);
+  -moz-transform: rotate(-29deg);
+  -o-transform: rotate(-29deg);
+}
+.android .antenna:nth-child(2) {
+  left: 165px;
+  -webkit-transform: rotate(30deg);
+  -moz-transform: rotate(30deg);
+  -o-transform: rotate(30deg);
+}
+.android .eye {
+  position: absolute;
+  background-color: white;
+  -webkit-border-radius: 10px;
+  -moz-border-radius: 10px;
+  border-radius: 10px;
+  width: 19px;
+  height: 19px;
+  top: 41px;
+  left: 51px;
+}
+.android .eye:nth-child(odd) {
+  left: 150px;
+}
+.android #neck {
+  position: absolute;
+  background: white;
+  height: 9px;
+  width: 100%;
+  top: 99px;
+}
+.android #body > div,
+.android footer > div {
+  position: absolute;
+  width: 50px;
+  height: 150px;
+  top: 103px;
+  left: -57px;
+  background: #A4C639;
+  -webkit-border-radius: 150px;
+  -moz-border-radius: 150px;
+  border-radius: 150px;
+}
+
+.android #body > div:nth-child(1) {
+  -webkit-transform-origin: right top;
+}
+.android #body > div:nth-child(2) {
+  left: 228px;
+  -webkit-transition: -webkit-transform 50ms ease-in-out;
+  -webkit-transform-origin: center top;
+}
+.android footer > div {
+  left: 45px;
+  top: 218px;
+}
+.android footer > div:nth-child(2) {
+  left: 126px;
+}
+.android .eyepatch {
+  position: absolute;
+  background-color: black;
+  width: 19px;
+  height: 19px;
+  top: 0px;
+  left: 51px;
+}
+</style>
+</head>
+<body>
+
+<div id="main">
+  <canvas id="fft" width="512" height="250"></canvas>
+  <div id="chrome-logo" class="reflect hidden">
+    <div class="icon">
+      <div class="green"></div>
+      <div class="yellow"></div>
+      <div class="blue"></div>
+      <div class="red"></div>
+    </div>
+  </div>
+  <div class="android hidden">
+    <header>
+      <div class="antenna"></div><div class="antenna"></div>
+      <div class="eypatch"></div>
+      <div class="eye" id="lefteye"></div><div class="eye" id="righteye"></div>
+    </header>
+    <div id="neck"></div>
+    <section id="body"><div id="leftarm"></div><div id="rightarm"></div></section>
+    <footer><div id="leftfoot"></div><div id="rightfoot"></div></footer>
+  </div>
+  <section>
+    <div id="controls">
+      <span id="buttons">
+        <button onclick="runCmd(this)" data-func="play" disabled>start</button>
+        <button onclick="runCmd(this)" data-func="stop" disabled>stop</button>
+        <button onclick="transformer()">next</button>
+      </span>
+      <input type="range" min="0" max="5" value="1" step="0.1" id="gain">
+    </div>
+  </section>
+</div>
+
+<!--
+<svg id="svgcircle" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="50" cy="50" r="40" stroke="black" stroke-width="2" fill="red">
+</svg>
+-->
+
+<!--
+<span id="meters">
+  <span>L:</span><meter class="left" min="0" high="0.7" max="1"></meter><br>
+  <span>R:</span><meter class="right" min="0" high="0.7" max="1"></meter>
+</span>
+-->
+
+<details>
+  <summary>Options</summary>
+  view port <input type="range" min="0" step="1" id="viewport-offset"><br>
+  playbackRate: <input type="range" value="1.0" min="0" max="8.0" id="playbackRate"><br>
+  smoothing: <input type="range" min="0" max="0.95" step="0.05" value="0.95" id="smoothing"><br>
+  bar width: <input type="range" min="3" max="20" value="10" step="1" id="col-width"><br>
+  spacer width: <input type="range" min="4" max="21" value="11" step="1" id="spacer-width"><br>
+  time domain?: <input type="checkbox" id="waveform">
+</details>
+
+<script src="beatdetektor.js"></script>
+<script>
+var canvas = document.getElementById('fft');
+var ctx = canvas.getContext('2d');
+canvas.width = document.body.clientWidth / 1.4;
+
+const CANVAS_HEIGHT = canvas.height;
+const CANVAS_WIDTH = canvas.width;
+
+/*
+var meterL = document.querySelector('meter.left');
+var meterR = document.querySelector('meter.right');
+*/
+
+var chromeLogo = document.querySelector('#chrome-logo');
+var red = document.querySelector('#chrome-logo .red');
+var yellow = document.querySelector('#chrome-logo .yellow');
+var green = document.querySelector('#chrome-logo .green');
+var blue = document.querySelector('#chrome-logo .blue');
+
+var spacer = document.getElementById('spacer-width');
+var barWidth = document.getElementById('col-width');
+
+var android = document.querySelector('.android');
+var leftArm = document.getElementById('leftarm');
+var rightArm = document.getElementById('rightarm');
+var leftFoot = document.getElementById('leftfoot');
+var rightFoot = document.getElementById('rightfoot');
+var antennas = document.querySelectorAll('.antenna');
+var leftEye = document.getElementById('lefteye');
+var rightEye = document.getElementById('righteye');
+
+/*
+window.addEventListener('keypress', function(e) {
+  if (e.keyCode == 32) { // space
+    e.preventDefault();
+    if (document.querySelector("[data-func='play']").disabled) {
+      runCmd('stop');
+    } else {
+      runCmd('play');
+    }
+  }
+}, false);
+*/
+
+var STAGES = [
+  function() {
+    android.classList.add('hidden');
+
+    ctx.fillStyle = 'black';
+    canvas.className = '';
+
+    spacer.value = 11;//barWidth.valueAsNumber + parseFloat(spacer.step);
+    var evt = document.createEvent('Event');
+    evt.initEvent('change', false, false);
+    spacer.dispatchEvent(evt);
+
+    barWidth.value = 10;
+    var evt2 = document.createEvent('Event');
+    evt2.initEvent('change', false, false);
+    barWidth.dispatchEvent(evt);
+  },
+  function() {
+    canvas.classList.add('open');
+    var transEnd = function(e) {
+      canvas.removeEventListener('webkitTransitionEnd', transEnd, false);
+      transitionsDone = true;
+
+      barWidth.value = parseFloat(barWidth.min);
+      var evt = document.createEvent('Event');
+      evt.initEvent('change', false, false);
+      barWidth.dispatchEvent(evt);
+
+      spacer.value = barWidth.valueAsNumber + parseFloat(barWidth.step);
+      var evt2 = document.createEvent('Event');
+      evt2.initEvent('change', false, false);
+      spacer.dispatchEvent(evt2);
+    };
+    canvas.addEventListener('webkitTransitionEnd', transEnd, false);
+  },
+  function() {
+    canvas.classList.remove('open');
+
+    ctx.fillStyle = '#ef652a';
+
+    canvas.classList.toggle('html5-logo');
+
+    barWidth.value = 5;
+    var evt = document.createEvent('Event');
+    evt.initEvent('change', false, false);
+    barWidth.dispatchEvent(evt);
+
+    spacer.value = 5;
+    var evt2 = document.createEvent('Event');
+    evt2.initEvent('change', false, false);
+    spacer.dispatchEvent(evt);
+  },
+  function() {
+    canvas.classList.add('animate');
+  },
+  function() {
+    canvas.classList.add('hidden');
+    chromeLogo.classList.remove('hidden');
+  },
+  function() {
+    chromeLogo.classList.add('hidden');
+    android.classList.remove('hidden');
+  }
+];
+var stageIndex = 0;
+var transitionsDone = false;
+
+function transformer() {
+  transitionsDone = false;
+  STAGES[++stageIndex % STAGES.length]();
+}
+
+
+function runCmd(el) {
+  if (typeof el == 'string') {
+    var func = el;
+  } else {
+    var func = el.dataset.func.toLowerCase();
+  }
+  sound[func]();
+  el.disabled = !el.disabled;
+  switch (func) {
+    case 'play':
+      document.querySelector("[data-func='stop']").disabled = false;
+      break;
+    case 'stop':
+      document.querySelector("[data-func='play']").disabled = false;
+      break;
+    default:
+      // noop
+  }
+}
+
+function Sound() {
+  const MIX_TO_MONO = false;
+  const NUM_SAMPLES = 2048;
+
+  var self_ = this;
+  var context_ = new (window.AudioContext || window.webkitAudioContext)();
+  var source_ = null;
+  var jsProcessor_ = null;
+  var analyser_ = null;
+  var viewTimeDomain_ = false;
+
+  var spacerWidth_ = spacer.valueAsNumber;
+  var colWidth_ = barWidth.valueAsNumber;
+
+  var viewportOffset_ = document.getElementById('viewport-offset');
+  viewportOffset_.max = Math.round((NUM_SAMPLES / 2) - CANVAS_WIDTH / 4);
+  viewportOffset_.value = Math.round(viewportOffset_.max / 4);
+
+  document.getElementById('waveform').addEventListener('change', function(e) {
+    viewTimeDomain_ = this.checked;
+  }, false);
+
+  document.getElementById('smoothing').addEventListener('change', function(e) {
+    analyser_.smoothingTimeConstant = this.valueAsNumber;
+  }, false);
+
+  barWidth.addEventListener('change', function(e) {
+    colWidth_ = this.valueAsNumber;
+  }, false);
+
+  spacer.addEventListener('change', function(e) {
+    spacerWidth_ = this.valueAsNumber;
+  }, false);
+
+  document.getElementById('gain').addEventListener('change', function(e) {
+    source_.gain.value = this.valueAsNumber;
+    //ctx.fillStyle = 'rgb(0,0,' + this.valueAsNumber + ')';
+  }, false);
+
+  document.getElementById('playbackRate').addEventListener('change', function(e) {
+    //console.log(this.valueAsNumber)
+    source_.playbackRate.value = this.valueAsNumber;
+  }, false);
+
+  /*document.getElementById('pitch').addEventListener('change', function(e) {
+    var r = Math.random();
+    var r1 = r1 = (r - 0.5) * 2.0;
+    var totalPitch = document.getElementById('pitch').value + r1 * pitchRandomization;
+    var pitchRate = Math.pow(2.0, totalPitch / 1200.0);
+ console.log( source_.playbackRate, parseFloat(this.value), this.valueAsNumber)
+    source_.playbackRate.value = this.valueAsNumber;
+  }, false);*/
+
+  var ftimer = 0;
+  var bd = new BeatDetektor(75, 149);
+  var vu = new BeatDetektor.modules.vis.VU();
+  var portion = 0;
+  var colors = [red, yellow, green];
+
+  var processAudio_ = function(e) {
+
+    // Get left channel input. No need for output arrays. They're hooked up
+    // directly to the destination, and we're not doing any processing.
+    var inputArrayL = e.inputBuffer.getChannelData(0);
+
+    var freqByteData = new Uint8Array(analyser_.frequencyBinCount);
+
+    if (viewTimeDomain_) {
+      analyser_.getByteTimeDomainData(freqByteData);
+    } else {
+      analyser_.getByteFrequencyData(freqByteData);
+      //analyser_.fftSize = 2048;
+    }
+
+    // Process beat detection if Chrome logo is showing or android logo is showing.
+    var stage = stageIndex % STAGES.length;
+    if (stage == 4 || stage == 5) {
+      bd.process(context_.currentTime, inputArrayL);
+      ftimer += bd.last_update;
+      if (ftimer > 1.0 / 24.0) {
+        vu.process(bd, ftimer);
+        ftimer = 0;
+      }
+
+      if (vu.vu_levels.length) {
+        var z = vu.vu_levels[0];
+
+        if (stage == 4) {
+          colors[portion++ % colors.length].style.webkitTransform = 'scale(' +  (z + 1) + ')';
+        } else if (stage == 5) {
+          antennas[0].style.webkitTransform = 'rotate(-29deg) scale(' +  (z + 1) + ')';
+          antennas[1].style.webkitTransform = 'rotate(30deg) scale(' +  (z + 1) + ')';
+          leftEye.style.webkitTransform = 'scale(' +  (-z + 1) + ')';
+          rightEye.style.webkitTransform = 'scale(' +  (-z + 1) + ')';
+
+          if (context_.currentTime > 10.5) {
+            leftFoot.style.webkitTransform = 'rotateZ(' +  (z * 30) + 'deg)';
+            rightFoot.style.webkitTransform = 'rotateX(' +  (z * 70) + 'deg)';
+          }
+
+          if (source_.gain.value >= 3) {
+            rightArm.style.webkitTransform = 'translateY(' +  (-z * 125) + 'px) rotateX(180deg) rotateZ(10deg)';
+          } else {
+            rightArm.style.webkitTransform = 'none';
+          }
+        }
+      }
+    }
+
+    self_.renderFFT('canvas', freqByteData);
+/*
+    meterL.value = Math.abs(inputArrayL[0]);
+    meterR.value = Math.abs(inputArrayL[0]);
+*/
+  };
+
+  this.renderFFT = function(format, freqByteData) {
+    if (format == 'canvas') {
+      const SPACER_WIDTH = spacerWidth_;//colWidth_ + 1;
+      const numBars = Math.round(CANVAS_WIDTH / SPACER_WIDTH);
+
+      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      freqByteData = freqByteData.subarray(viewportOffset_.valueAsNumber);
+
+      var colors = [
+        '#3369E8', // blue
+        '#D53225', // red
+        '#EEB211', // yellow
+        '#009939' // green
+      ];
+      // Draw rectangle for each frequency bin.
+      for (var i = 0; i < numBars /*freqByteData.length*/; ++i) {
+        var magnitude = freqByteData[i];
+        if ((stageIndex % STAGES.length == 1) && transitionsDone) {
+          var lingrad = ctx.createLinearGradient(0, CANVAS_HEIGHT, 0, CANVAS_HEIGHT - magnitude);
+          lingrad.addColorStop(0, '#fff');
+          lingrad.addColorStop(1, colors[i % colors.length]);
+          ctx.fillStyle = lingrad;
+        }
+
+        ctx.fillRect(i * SPACER_WIDTH, CANVAS_HEIGHT, colWidth_, -magnitude);
+      }
+    }
+  };
+
+  this.initAudio = function(arrayBuffer) {
+    if (source_) {
+      runCmd('stop');
+    }
+
+    source_ = context_.createBufferSource();
+    source_.looping = true;
+
+    // Use async decoder if it is available.
+    if (context_.decodeAudioData) {
+      context_.decodeAudioData(arrayBuffer, function(buffer) {
+        source_.buffer = buffer;
+      }, function(e) {
+        console.log(e);
+      });
+    } else {
+      source_.buffer = context_.createBuffer(arrayBuffer, MIX_TO_MONO /*mixToMono*/);
+    }
+
+    // This AudioNode will do the amplitude modulation effect directly in JavaScript
+    jsProcessor_ = context_.createJavaScriptNode(NUM_SAMPLES /*bufferSize*/, 1 /*num inputs*/, 1 /*num outputs*/);
+    jsProcessor_.onaudioprocess = processAudio_;
+
+    analyser_ = context_.createAnalyser();
+    analyser_.smoothingTimeConstant = document.getElementById('smoothing').valueAsNumber;
+
+    source_.connect(context_.destination);
+
+    //runCmd('play');
+    document.querySelector("[data-func='play']").disabled = false;
+  };
+
+  this.load = function(url) {
+    var request = new XMLHttpRequest();
+    request.open('GET', url, true);
+    request.responseType = 'arraybuffer';
+    request.onload = function(e) {
+      self_.initAudio(request.response);
+    };
+    request.send();
+  };
+
+  this.play = function() {
+    if (!source_) {
+      sound.load('IO-5.0.wav');
+    } else {
+      // Connect the processing graph:
+      // source -> destination
+      // source -> analyser -> jsProcessor -> destination
+      source_.connect(context_.destination);
+      source_.connect(analyser_);
+
+      analyser_.connect(jsProcessor_);
+      jsProcessor_.connect(context_.destination);
+
+      source_.noteOn(0);
+    }
+  };
+
+  this.stop = function() {
+    source_.noteOff(0);
+    source_.disconnect(0);
+    jsProcessor_.disconnect(0);
+    analyser_.disconnect(0);
+
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+/*
+    meterL.value = 0;
+    meterR.value = 0;
+*/
+
+    antennas[0].style.webkitTransform = 'rotate(-29deg)';
+    antennas[1].style.webkitTransform = 'rotate(30deg)';
+    leftEye.style.webkitTransform = 'none';
+    rightEye.style.webkitTransform = 'none';
+    leftFoot.style.webkitTransform = 'none';
+    rightFoot.style.webkitTransform = 'none';
+    rightArm.style.webkitTransform = 'none';
+
+    yellow.style.webkitTransform = 'none';
+    green.style.webkitTransform = 'none';
+    blue.style.webkitTransform = 'none';
+    red.style.webkitTransform = 'none';
+  };
+}
+
+var sound = new Sound();
+sound.load('IO-5.0.mp3');
+</script>
+<script>
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-23384572-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+</body>
+</html>

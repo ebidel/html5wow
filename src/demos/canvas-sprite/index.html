@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<!--
+Copyright 2011 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Author: Arne Roomann-Kurrik (kurrik@chromium.org)
+-->
+<html>
+  <head>
+    <title>Sprites</title>
+    <style>
+      html, body, canvas {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+    <script>
+function CanvasSprite(canvas, w, h, sprite_url, video_url) {
+  this.w = w;
+  this.h = h;
+  this.canvas = canvas;
+  this.canvas.width = w;
+  this.canvas.height = h;
+  this.mouseY = h - 50;
+  this.groundw = Math.round(w / this.GROUND_CHUNKS) + 1;
+  this.ground = new Array(this.GROUND_CHUNKS);
+  this.showVideo = false;
+  for (var i = 0; i < this.GROUND_CHUNKS; i++) {
+    this.ground[i] = this.mouseY;
+  }
+  this.groundIndex = 0;
+  this.intAnimation = 1000 / this.FPS;
+  this.intGround = 1000 / this.CHUNKS_PER_SEC;
+
+  this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+  this.canvas.addEventListener('click', this.onClick.bind(this));
+  this.load('img', 'spritesheet', sprite_url, this.onSpriteSheet.bind(this));
+  this.load('video', 'background', video_url, this.onVideo.bind(this));
+};
+
+CanvasSprite.prototype.onMouseMove = function(evt) {
+  var height = Math.round(evt.offsetY / 10) * 10;
+  this.mouseY = Math.min(Math.max(50, height), this.h - 20);
+};
+
+CanvasSprite.prototype.onClick = function(evt) {
+  this.showVideo = !this.showVideo;
+};
+
+CanvasSprite.prototype.load = function(type, prop, url, callback) {
+  this[prop] = document.createElement(type);
+  this[prop].addEventListener('load', callback);
+  if (type == 'video') {
+    this[prop].setAttribute('loop', 'true');
+    this[prop].setAttribute('autoplay', true);
+    //document.body.appendChild(this[prop]);
+  }
+  this[prop].src = url;
+  console.log(this[prop], prop);
+};
+
+CanvasSprite.prototype.onSpriteSheet = function() {
+  this.sw = this.spritesheet.width / 5;
+  this.sh = this.spritesheet.height;
+  this.tick(new Date().getTime());
+};
+
+CanvasSprite.prototype.onVideo = function() {
+  console.log('hasVideo');
+};
+
+CanvasSprite.prototype.RUNNING_FRAMES = [2, 1, 0];
+CanvasSprite.prototype.JUMPING_FRAMES = [4];
+CanvasSprite.prototype.FPS = 15;
+CanvasSprite.prototype.JUMPING_LENGTH = 0.5;
+CanvasSprite.prototype.JUMPING_HEIGHT = 120;
+CanvasSprite.prototype.GROUND_CHUNKS =  40;
+CanvasSprite.prototype.CHUNKS_PER_SEC = 40;
+
+CanvasSprite.prototype.draw = function(time) {
+  if (!this.lastgroundtime || time - this.lastgroundtime > this.intGround) {
+    this.ground[this.groundIndex] = this.mouseY;
+    this.groundIndex = (this.groundIndex + 1) % this.GROUND_CHUNKS;
+    this.lastgroundtime = time;
+  }
+  var minground = 1000;
+  var index = 0;
+  for (var i = 2; i < 6; i++) {
+    index = (this.groundIndex + i) % this.GROUND_CHUNKS
+    minground = Math.min(this.ground[index], minground);
+  }
+  var dy = minground - this.sh;
+  this.frame_pool = this.RUNNING_FRAMES;
+  if (this.jump_start) {
+    var delta = (time - this.jump_start) / 1000;
+    var x = (delta / this.JUMPING_LENGTH) * Math.PI;
+    dy -= Math.max(Math.sin(x), 0) * this.JUMPING_HEIGHT;
+    this.frame_pool = this.JUMPING_FRAMES;
+    if (delta >= this.JUMPING_LENGTH) {
+      this.jump_start = null;
+    }
+  } else {
+    if (Math.random() > 0.99) {
+      this.jump_start = time;
+    }
+  }
+  var frame = Math.round(time / this.intAnimation) % this.frame_pool.length;
+  var sx = this.sw * this.frame_pool[frame];
+  var context = this.canvas.getContext('2d');
+  context.beginPath();
+  if (this.background.videoWidth > 0 && this.showVideo) {
+    context.save();
+    context.translate(this.w, 0);
+    context.scale(-1, 1);
+    context.drawImage(this.background,
+      0, 0, this.background.videoWidth, this.background.videoHeight,
+      0, 0, this.w, this.h);
+    context.restore();
+  } else {
+    context.fillStyle = '#6cf';
+    context.fillRect(0, 0, this.w, this.h);
+    context.fill();
+  }
+  context.fillStyle = '#093';
+  var x, y, index;
+  for (var i = 0; i < this.GROUND_CHUNKS; i++) {
+    index = (this.groundIndex + i) % this.GROUND_CHUNKS
+    x = i * this.groundw;
+    y = this.ground[index];
+    context.fillRect(x, y, this.groundw, this.h);
+  }
+  context.fill();
+  context.drawImage(this.spritesheet,
+      sx, 0, this.sw, this.sh,
+      0, dy, this.sw, this.sh);
+};
+
+CanvasSprite.prototype.tick = function(time) {
+  this.draw(time);
+  window.webkitRequestAnimationFrame(this.tick.bind(this), this.canvas);
+};
+
+    </script>
+  </head>
+  <body>
+    <canvas id="output"></canvas>
+    <script>
+      var output = document.querySelector('#output');
+      var demo = new CanvasSprite(output, 800, 250,
+                                  'spritesheet.png',
+                                  'clouds.ogv');
+    </script>
+  </body>
+</html>

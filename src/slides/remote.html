@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<!--
+Copyright 2011 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Author: Eric Bidelman (ericbidelman@chromium.org)
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+  <title>remote</title>
+<style>
+@-webkit-keyframes glowGreen {
+  from {
+    -webkit-box-shadow: rgba(0, 255, 0, 0) 0 0 0;
+  }
+  50% {
+    -webkit-box-shadow: rgba(0, 255, 0, 1) 0 0 10px;
+  }
+  to {
+    -webkit-box-shadow: rgba(0, 255, 0, 0) 0 0 0;
+  }
+}
+@-webkit-keyframes glowRed {
+  from {
+    -webkit-box-shadow: rgba(255, 0, 0, 0) 0 0 0;
+  }
+  50% {
+    -webkit-box-shadow: rgba(255, 0, 0, 1) 0 0 10px;
+  }
+  to {
+    -webkit-box-shadow: rgba(255, 0, 0, 0) 0 0 0;
+  }
+}
+html, body {
+  height: 100%;
+  padding: 0;
+  margin: 0;
+}
+body {
+  background-color: #eee;
+  display: -webkit-box;
+  -webkit-box-pack: center;
+}
+#container {
+  display: -webkit-box;
+  /*-webkit-box-align: center;*/
+  -webkit-box-pack: start;
+  -webkit-box-orient: vertical;
+  width: 100%;
+}
+#container > * {
+  -webkit-box-pack: center;
+}
+#container .buttons {
+  text-align: center;
+}
+body {
+  background-color: #eee;
+  padding: 5px;
+  -webkit-box-sizing: border-box;
+  -moz-box-sizing: border-box;
+  box-sizing: border-box;
+  font-size: 10pt;
+}
+button {
+  font-size: 40pt;
+  width: 125px;
+  background: -webkit-gradient(linear, 0% 40%, 0% 70%, from(#F9F9F9), to(#E3E3E3));
+  border: 2px solid #ccc;
+  /*text-shadow: 1px 1px #ffcc00;*/
+  border-radius: 10px;
+  color: #000;
+  padding: 5px 8px;
+  outline: none;
+  white-space: nowrap;
+  vertical-align: middle;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+}
+button:first-of-type {
+  margin-right: 5px;
+}
+button:not([disabled]):hover {
+  border-color: #ffcc00;
+}
+button:not([disabled]):active,
+button:not([disabled]).active {
+  background: -webkit-gradient(linear, 0% 40%, 0% 70%, from(#E3E3E3), to(#F9F9F9));
+  top: 1px;
+  left: 1px;
+  color: #444;
+  -webkit-text-stroke: 1px rgba(0,0,0,0.3);
+}
+button[disabled] {
+  color: #ccc;
+}
+#connection {
+  font: 14px Arial, sans-serif;
+  font-weight: bold;
+  color: black;
+  margin-bottom: 5px;
+}
+#connection div {
+  background-color: orange;
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-radius: 10px;
+  margin-right: 5px;
+  -webkit-animation-duration: 2s;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: linear;
+}
+#connection.connected div {
+  background-color: green;
+  -webkit-box-shadow: rgba(0, 255, 0, 0.5) 0px 0px 5px;
+  -webkit-animation-name: glowGreen;
+}
+#connection.disconnected div {
+  background-color: red;
+  -webkit-box-shadow: rgba(255, 0, 0, 0.5) 0px 0px 5px;
+  -webkit-animation-name: glowRed;
+}
+#notes {
+  margin-top: 10px;
+}
+</style>
+</head>
+<body>
+
+<div id="container">
+  <div  class="buttons">
+    <div id="connection"><div></div>Connecting...</div>
+    <div>
+      <button id="left" onclick="left()" disabled>&larr;</button>
+      <button id="right" onclick="right()">&rarr;</button>
+    </div>
+  </div>
+  <div id="notes"></div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/libs/yepnope.1.0.1-min.js"></script>
+<script src="socket.io/socket.io.js"></script>
+<script>
+var leftButton = document.querySelector('#left');
+var rightButton = document.querySelector('#right');
+var connection = document.querySelector('#connection');
+var notes = document.querySelector('#notes');
+
+var socket = null;
+var numSlides = null;
+
+var setupWebSocket = function() {
+  //173.255.117.171
+  socket = new io.Socket(
+      'localhost', {rememberTransport: false, reconnect: true});
+
+  socket.connect();
+
+  socket.on('connect', function() {
+console.log(socket)
+    updateConnectionStatus('Connected', true);
+  });
+
+  socket.on('message',  function(obj) {
+  console.log(obj)
+    if ('currentSlideNum' in obj) {
+      leftButton.disabled = obj.currentSlideNum == 1 ? true : false;
+      if (numSlides) {
+        rightButton.disabled = (obj.currentSlideNum == numSlides);
+      }
+    }
+    if ('numSlides' in obj) {
+      numSlides = obj.numSlides;
+      if ('currentSlideNum' in obj) {
+        rightButton.disabled = (obj.currentSlideNum == numSlides);
+      }
+    }
+
+    // Add speaker notes.
+    notes.innerHTML = 'notes' in obj ? obj.notes : '';
+  });
+
+  socket.on('disconnect',  function() {
+   updateConnectionStatus('Disconnected', false);
+  });
+};
+
+var testA = document.createElement('a');
+yepnope({
+  test: 'classList' in testA,
+  nope: ['js/classList.min.js'],
+  complete: function (url, result, key) {
+    if (!config.disableWebSockets) {
+      setupWebSocket();
+    } else {
+      updateConnectionStatus('Remote control has been disabled', false);
+      leftButton.disabled = true;
+      rightButton.disabled = true;
+    }
+  }
+});
+
+var disconnect = function() {
+  socket.disconnect();
+};
+
+function left() {
+  //leftButton.classList.add('active');
+  if (!leftButton.disabled) {
+    socket.send({direction: 'LEFT'});
+  }
+  /*setTimeout(function() {
+    leftButton.classList.remove('active');
+  }, 100);*/
+}
+
+function right() {
+  //rightButton.classList.add('active');
+  if (!rightButton.disabled) {
+    socket.send({direction: 'RIGHT'});
+  }
+  /*setTimeout(function() {
+    rightButton.classList.remove('active');
+  }, 100);*/
+}
+
+function up() {
+  socket.send({direction: 'UP'});
+}
+
+function down() {
+  socket.send({direction: 'DOWN'});
+}
+
+function updateConnectionStatus(msg, connected) {
+  if (connected) {
+    connection.classList.add('connected');
+    connection.classList.remove('disconnected');
+  } else {
+    connection.classList.remove('connected');
+    connection.classList.add('disconnected');
+  }
+  connection.innerHTML = '<div></div>' + msg;
+}
+
+window.addEventListener('keydown', function(e) {
+  if (e.keyCode == 37) { // left
+    left();
+  } else if (e.keyCode == 38) { // up
+    //up();
+  } else if (e.keyCode == 39) { // right
+    right();
+  } else if (e.keyCode == 40) { // bottom
+    //down();
+  }
+}, false);
+</script>
+</body>
+</html>

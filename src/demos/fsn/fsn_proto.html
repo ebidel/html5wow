@@ -1,0 +1,757 @@
+<!DOCTYPE HTML>
+<html lang="en">
+  <head>
+    <title>FSN hack</title>
+    <meta charset="utf-8">
+    <style type="text/css">
+      canvas {
+        background-color: white;
+      }
+      body {
+        margin: 0px;
+        overflow: hidden;
+        font-family:Monospace;
+        font-size:13px;
+        text-align:center;
+        font-weight: bold;
+        text-align:center;
+      }
+
+      a {
+        color:#0078ff;
+      }
+
+      #info {
+        color:#fff;
+        position: absolute;
+        top: 0px; width: 100%;
+        padding: 5px;
+        z-index:100;
+      }
+
+      #console {
+        text-align: left;
+        margin: 0px;
+        padding: 0px;
+        position: absolute;
+        bottom: 0px;
+        left: 0px;
+        color: white;
+        background: rgba(0,0,0,0.5);
+        width: 100%;
+        height: 240px;
+        z-index: 15;
+        font-size: 14px;
+        display: block;
+      }
+      #history {
+        height: 200px;
+        overflow: auto;
+        margin: 0px;
+        padding: 0px;
+        font-size: 14px;
+        font-family: monospace;
+        width: 100%;
+        font-weight: lighter;
+        display: block;
+      }
+      #history p {
+        margin-left: 16px;
+      }
+      #history p span {
+        margin-right: 16px;
+      }
+      #currentDir {
+        height: 20px;
+        overflow: hidden;
+        margin: 0px;
+        padding: 0px;
+        font-size: 12px;
+        font-family: monospace;
+        width: 100%;
+        font-weight: lighter;
+        display: block;
+      }
+      #currentDir p {
+        margin: 0px;
+        margin-left: 8px;
+      }
+      #cmdline {
+        display: block;
+        border: 0px;
+        width: 100%;
+        margin: 0px;
+        height: 19x;
+        border-top: 1px solid #888;
+        font-size: 14px;
+        font-family: monospace;
+        font-weight: lighter;
+        background: black;
+        color: white;
+        outline: 0px;
+      }
+      .cmd {
+        border-top: 1px solid #444;
+        color: silver;
+      }
+      .dir {
+        color: #acf;
+      }
+      .file {
+        color: #cfa;
+      }
+      .small {
+        font-size: 8px;
+      }
+      #dirsel {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        z-index: 10;
+      }
+    </style>
+  </head>
+
+  <body>
+    <input type="file" id="dirsel" webkitdirectory directory />
+    <div id="console">
+      <div id="history"></div>
+      <div id="currentDir"></div>
+      <input type="text" id="cmdline" />
+    </div>
+    <script type="text/x-glsl-fs" id="bg-frag">
+      precision mediump float;
+      uniform sampler2D Texture0;
+      uniform float aspect;
+      varying vec2 texCoord0;
+      void main()
+      {
+        float ds = 2.0*(texCoord0.s-0.5);
+        float dt = texCoord0.t-0.5;
+        float r = sin((dt*3.0+ds*ds) * 400.0);
+        float dx = (1.1-texCoord0.s) * aspect;
+        float dy = (0.9-texCoord0.t) / aspect;
+        float d = sqrt(dx*dx + dy*dy)+0.05*r;
+        vec4 c = vec4(0.76,0.72,0.78, 0.5-0.8*d);
+        gl_FragColor = c*c.a;
+      }
+    </script>
+    <script type="text/javascript" src="magi.js"></script>
+    <script type="text/javascript" src="fsn.js"></script>
+
+    <script type="text/javascript">
+
+      if (window.parent !== window) {
+        byId('console').style.display = 'none';
+        byId('dirsel').style.display = 'none';
+      }
+
+      window.onresize = function() {
+        if (this.fsnRender) {
+          this.fsnRender.canvas.width = window.innerWidth;
+          this.fsnRender.canvas.height = window.innerHeight;
+          this.fsnRender.display.changed = true;
+        }
+      };
+
+      Magi.DEBUG = false;
+
+      FSNRender = Klass({
+        container: null,
+        camera: null,
+        scene: null,
+        renderer: null,
+        materials: null,
+        objects: null,
+        singleMaterial : null,
+        zmaterial : null,
+        parameters: null,
+        color: null,
+        material_depth: null,
+        material_base: null,
+        cubeMaterial : null,
+        fsn : null,
+
+        initialize : function(fsnInstance) {
+          this.setFSN(fsnInstance);
+          this.canvas = E.canvas(window.innerWidth, window.innerHeight);
+          this.display = new Magi.Scene(this.canvas);
+          this.canvas.style.position = 'absolute';
+          this.canvas.style.left = '0px';
+          this.canvas.style.top = '0px';
+          document.body.appendChild(this.canvas);
+          this.display.bg = [0.7, 0.7, 0.6, 1];
+          this.lightPos = vec4(8000, -2000, -15000, 1);
+          this.scene = this.display.scene;
+          this.camera = this.display.camera;
+          this.camera.zNear = 1;
+          this.camera.zFar = 1000;
+          this.offset = vec3(-80,120,200);
+          this.lookOffset = vec3(0,-10,0);
+          var grad = new Magi.FilterQuad('bg-frag');
+          grad.depthTest = false;
+          grad.material.floats.aspect = 4/3;
+          this.scene.appendChild(grad);
+          this.updateLayout();
+          this.display.drawOnlyWhenChanged = true;
+          var self = this;
+          this.scene.addFrameListener(function(t,dt) {
+            self.sceneUpdate(t,dt);
+          });
+          this.camera.afterTransform(function(m) {
+            var n = mat4.identity();
+            mat4.translate(n, this.position);
+            mat4.multiply(n, m, n);
+            mat4.set(m, Magi.DefaultMaterial.lightMatrix);
+          });
+          this.downX = null;
+          this.downY = null;
+          window.onmouseup = function(ev) {
+            if (self.downX != null) {
+              self.downX = null;
+              self.downY = null;
+              ev.preventDefault();
+            }
+          };
+          this.canvas.onmousedown = function(ev) {
+            self.downX = ev.clientX;
+            self.downY = ev.clientY;
+            ev.preventDefault();
+          };
+          this.canvas.onmousemove = function(ev) {
+            if (self.downX != null) {
+              var dx = ev.clientX - self.downX;
+              var dy = ev.clientY - self.downY;
+              self.downX = ev.clientX;
+              self.downY = ev.clientY;
+              self.offset[0] -= dx/2;
+              self.offset[1] += dy/1.5;
+              ev.preventDefault();
+            }
+          };
+        },
+
+        setFSN : function(fsnInstance) {
+          this.fsn = fsnInstance;
+          var self = this;
+          this.fsn.onChangeDir = function(path) {
+            self.currentObjectIndex = path;
+          };
+          this.fsn.onRelayoutNeeded = function(entry, full) {
+            self.updateLayoutPath(entry.getPath(), full ? null : 1);
+          };
+        },
+
+        gotoPath : function(path) {
+          if (this.objects[path]) {
+            this.currentObjectIndex = path;
+          }
+        },
+
+
+        // TODO partial layout updates (dump tree at X, replace with another)
+        // - emit relative coords in layout
+        // - derp
+
+        updateLayout : function() {
+          var layout = this.fsn.getLayout();
+
+          for (var i in this.objects) {
+            var cn = this.objects[i];
+            this.destroyNode(cn);
+          }
+          this.objects = {};
+
+          this.addLayout(layout);
+        },
+
+        updateLayoutPath : function(path, maxDepth) {
+          var layout = this.fsn.getLayout(path, maxDepth);
+          var p = this.objects[path];
+          var paths = (path == '/') ? path : (path + '/');
+          for (var i in this.objects) {
+            if (i == path || i.slice(0,paths.length) == paths) {
+              var obj = this.objects[i];
+              obj.marked = true;
+            }
+          }
+          this.addLayout(layout, p.entry);
+          p.marked = false;
+          for (var i in this.objects) {
+            var obj = this.objects[i];
+            if (obj.marked) {
+              this.destroyNode(obj);
+              delete this.objects[i];
+            }
+          }
+        },
+
+        destroyNode : function(cn) {
+          for (var i=0, len=cn.childNodes.length; i<len; i++) {
+            var c = cn.childNodes[i];
+            if (c.texture) {
+              c.texture.destroy();
+            }
+          }
+          if (cn.parentNode)
+            cn.parentNode.removeChild(cn);
+        },
+
+        unmark : function(node) {
+          node.marked = false;
+          for (var i=0; i<node.childNodes.length; i++) {
+            this.unmark(node.childNodes[i]);
+          }
+        },
+
+        addLayout : function(layout, root) {
+          var self = this;
+          var rx=0,ry=0,rz=0,rs=1;
+          if (root && root.parent) {
+            rx = root.offset.x;
+            ry = root.offset.y;
+            rz = root.offset.z;
+            rs = root.offset.scale;
+          }
+          for ( var j=0; j<layout.length; j++ ) {
+            var l = layout[j];
+            if (l.continuation) {
+              var obj = this.objects[l.path];
+              if (!obj) {
+                l.continuation = false;
+              } else {
+                l.parent.entries[l.name] = obj.entry;
+                obj.entry.parent = l.parent;
+                obj.entry.offset = l.offset;
+                this.unmark(obj);
+                l = obj.entry;
+              }
+            }
+            if (root) {
+              if (!l.parent && l.name != '/') {
+                l.offset = root.offset;
+                l.parent = root.parent;
+              }
+            }
+            var i = l.path;
+
+            var hue = (l.entries == null ? 100 : 180) / 360;
+
+            var node;
+            if (this.objects[i] && typeof this.objects[i].entry.entries == typeof l.entries) {
+              node = this.objects[i];
+              if (node.connectorLine)
+                node.removeChild(node.connectorLine);
+              node.reused = true;
+              node.marked = false;
+            } else {
+              node = new Magi.Node();
+              this.objects[i] = node;
+            }
+            l.node = node;
+            node.entry = l;
+
+            node.offset = vec3(l.offset.x, l.offset.y, l.offset.z);
+            var x = l.offset.x;
+            var y = l.offset.y;
+            var z = l.offset.z;
+            node.setPosition( x, y, z );
+            node.setScale( l.offset.scale );
+            if (l.entries == null) {
+              node.position[1] += 36*l.offset.scale;
+              node.offset[1] += 36*l.offset.scale;
+            }
+            node.originalPosition = vec3(node.position);
+            node.upPosition = vec3(node.position);
+            node.upPosition[1] += l.offset.scale*0.4*20*9;
+            node.tmpVec = vec3();
+            node.origY = node.offset[1];
+            if (l.entries == null && !node.reused) {
+              node.addFrameListener(function(t,dt) {
+                var targetPosition = this.originalPosition;
+                if (this.entry.path == self.currentObjectIndex) {
+                  targetPosition = this.upPosition;
+                }
+                vec3.sub(targetPosition, this.position, this.tmpVec);
+                var d = targetPosition[1] - this.originalPosition[1];
+                vec3.scale(this.tmpVec, 0.1);
+                vec3.add(this.position, this.tmpVec, this.position);
+                this.changed = vec3.distance(this.position, targetPosition) > Math.abs(d * 0.01);
+                this.offset[1] = this.origY + d;
+              });
+            }
+
+            var s = 20;
+            if (l.entries != null)
+              s *= 1.5;
+            var f = 0.4;
+            if (!node.reused) {
+              var mesh;
+              if (l.entries == null) {
+                mesh = new Magi.Cube().setScale(4*f*s, 9*f*s, 1*f*s);
+              } else {
+                mesh = new Magi.Cube().setScale(2*s, 0.05*s, 2*s);
+              }
+              var ffs = mesh.material.floats;
+              ffs.LightPos = this.lightPos;
+              ffs.MaterialDiffuse = vec4(0.1, 0.1, 0.1, 1);
+              ffs.MaterialSpecular = vec4(0.5, 0.5, 0.5, 0);
+              ffs.MaterialEmit = vec4(0.0, 0.0, 0.0, 0);
+              ffs.LightSpecular = vec4(0.95, 0.95, 0.95, 1);
+              ffs.LightDiffuse = vec4(0.7, 0.7, 0.7, 1);
+              ffs.LightAmbient = vec4(0.2, 0.2, 0.2, 1);
+
+              node.appendChild(mesh);
+              var txt = new Magi.Text(l.name, 50, '#fff', 'Sans-serif', true);
+              txt.setAlign(txt.leftAlign, txt.topAlign);
+              if (l.entries == null) {
+                txt.setScale(s*(3.2/Math.max(320, txt.realWidth)));
+                mesh.setY(0.8*f*s);
+                txt.setAxis(0,0,1).setAngle(Math.PI/2);
+                txt.setPosition(-2*f*s, -3.2*f*s, 0.6*f*s);
+              } else {
+                txt.setScale(s*(1.6/Math.max(220, txt.realWidth)));
+                txt.setPosition(-1*s, 0.15*s, 1.2*s);
+              }
+              node.appendChild(txt);
+            }
+            if (l.entries != null && l.parent) {
+              var dx = l.offset.x/l.offset.scale;
+              var dy = l.offset.y/l.offset.scale;
+              var dz = l.offset.z/l.offset.scale + 25/l.offset.scale;
+              var d = Math.sqrt(dx*dx+dy*dy+dz*dz);
+              var fs = 40*f;
+              var connectorLine = new Magi.Node();
+              var q1 = new Magi.ColorQuad(0,0,0,1);
+              var angle = Math.atan2(dz/2, dx);
+              var hypot = Math.sqrt(dx*dx+(dz/2*dz/2))/fs;
+              var filler = 0;
+              if (angle != -Math.PI/2) {
+                var alpha = 0.5*Math.abs(-Math.PI/2 - angle);
+                filler = 0.1 * Math.tan(alpha);
+              }
+              hypot += filler;
+              q1.setScale(hypot/2, 0.1, 1);
+              q1.setX(-hypot/2);
+              var q1p = new Magi.Node();
+              q1p.setAxis(0,0,1).setAngle(Math.PI-angle);
+              q1p.appendChild(q1);
+              connectorLine.appendChild(q1p);
+              q2 = new Magi.ColorQuad(0,0,0,1);
+              var len = Math.abs(dz/fs/2)+filler;
+              q2.setScale(len/2, 0.1, 1);
+              q2.setX(len/2);
+              var q2p = new Magi.Node();
+              q2p.setAxis(0,0,1).setAngle(Math.PI/2);
+              q2p.appendChild(q2);
+              q2p.setPosition(dx/fs, -dz/2/fs-filler, 0);
+              connectorLine.appendChild(q2p);
+              q3 = new Magi.ColorQuad(0,0,0,1);
+              q3.setScale(dy/fs/2, 0.1, 1);
+              q3.setX(-dy/fs/2);
+              q3.setAxis(1,0,0).setAngle(-Math.PI/2);
+              var q3p = new Magi.Node();
+              q3p.appendChild(q3);
+              q3p.setAxis(0,1,0).setAngle(Math.PI/2);
+              var q3pp = new Magi.Node();
+              q3pp.appendChild(q3p);
+              q3pp.setAxis(1,0,0).setAngle(-0.1);
+              q3pp.setPosition(dx/fs, -dz/fs, 0);
+              connectorLine.appendChild(q3pp);
+              connectorLine.setAxis(1,0,0).setAngle(-Math.PI/2);
+              connectorLine.setPosition(-dx, -dy, -dz+20*l.offset.scale);
+              connectorLine.setScale(fs, fs, fs);
+              node.connectorLine = connectorLine;
+              node.appendChild(connectorLine);
+            }
+
+            if (!node.reused) {
+              if (l.parent) {
+                l.parent.node.appendChild(node);
+              } else if (root && root.parent) {
+                root.parent.node.appendChild(node);
+              } else {
+                this.scene.appendChild(node);
+              }
+            }
+          }
+          this.gotoPath(this.fsn.getCurrentPath());
+          this.display.changed = true;
+        },
+
+
+        getAbsoluteOffset : function(obj) {
+          var parents = [];
+          while (obj && obj.offset) {
+            parents.unshift(obj);
+            obj = obj.parentNode;
+          }
+          var offset = vec3(0,0,0);
+          var scale = 1;
+          for (var i=0; i<parents.length; i++) {
+            var p = parents[i];
+            offset[0] += p.offset[0] * scale;
+            offset[1] += p.offset[1] * scale;
+            offset[2] += p.offset[2] * scale;
+            scale *= p.entry.offset.scale;
+          }
+          return {offset:offset, scale:scale};
+        },
+
+        sceneUpdate : function(t,dt) {
+          var tobj = this.objects[this.currentObjectIndex];
+          if (!tobj) return;
+
+          if (this.previousTarget) {
+            var box = this.previousTarget.childNodes[0];
+            var fs = box.material.floats;
+            fs.MaterialEmit = vec4(0,0,0,0);
+          }
+          this.previousTarget = tobj;
+          var fs = tobj.childNodes[0].material.floats;
+          fs.MaterialEmit = vec4(0.0, 0.5, 0.4, 0);
+
+          var absoff = this.getAbsoluteOffset(tobj);
+          var tgt = vec3()
+          var tgtOff = this.lookOffset;
+          vec3.scale(tgtOff, absoff.scale, tgt);
+          vec3.add(absoff.offset, tgt, tgt);
+
+          var d2 = vec3();
+          vec3.sub(tgt, this.camera.lookAt, d2);
+          var d2len = vec3.lengthSquare(d2);
+          vec3.scale(d2, 0.08);
+          vec3.add(this.camera.lookAt, d2, d2);
+
+          var off = vec3(this.offset);
+          vec3.scale(off, absoff.scale, off);
+          var d = vec3();
+          vec3.add(tgt, off, d);
+          vec3.sub(d, this.camera.position, d);
+          var dlen = vec3.lengthSquare(d);
+          vec3.scale(d, 0.1);
+          vec3.add(this.camera.position, d, d);
+
+          vec3.set(d, this.camera.position);
+          vec3.set(d2, this.camera.lookAt);
+
+          var distanceToTarget = vec3.distance(this.camera.position, this.camera.lookAt);
+          this.camera.zNear = distanceToTarget / 8;
+          this.camera.zFar = distanceToTarget * 10;
+
+          if (Math.sqrt(d2len) > distanceToTarget*0.001 || Math.sqrt(dlen) > distanceToTarget*0.001)
+            this.display.changed = true;
+        }
+
+      });
+
+
+      var buildTree = function(e) {
+        // Reset
+        var pathList_ = [];
+        var fileList = e.target.files;
+
+        for (var i = 0, file; file = fileList[i]; ++i) {
+          pathList_.push(file.webkitRelativePath);
+        }
+        buildTreeFromPathList(pathList_, true);
+      };
+
+      var buildTreeFromPathList = function(pathList_, rebaseToTopDir) {
+        var tree = FSN.buildTreeFromPathList(pathList_);
+        fsn = new FSN(tree);
+        if (rebaseToTopDir) {
+          for (var i in fsn.tree.entries) {
+            fsn.tree = fsn.tree.entries[i];
+            fsn.tree.parent = null;
+            fsn.tree.name = '/';
+            fsn.cd('/');
+            break;
+          }
+        }
+        if (!window.fsnRender) {
+          fsnRender = new FSNRender(fsn);
+        } else {
+          fsnRender.setFSN(fsn);
+          fsnRender.updateLayout();
+        }
+        var cmdline = byId('cmdline');
+
+        cmdline.value = 'ls';
+        cmdline.onkeydown({which: Key.ENTER});
+      };
+
+      (function() {
+        var dirsel = document.getElementById('dirsel');
+        dirsel.addEventListener('change', buildTree, false);
+
+        var cmdline = document.getElementById('cmdline');
+        var hist = document.getElementById('history');
+        var cmdHistory = [];
+        var h = localStorage.cmdHistory;
+        if (h) cmdHistory = JSON.parse(h);
+        cmdHistory.index = 0;
+        cmdline.focus();
+        cmdline.onkeydown = function(ev) {
+
+          /* Command parsing */
+          if (Key.match(ev, Key.ENTER)) {
+            var args = this.value.split(' ').filter(function(s){ return s.length > 0; });
+            var cmd = args[0];
+            var rv = null;
+            try {
+              rv = fsn[cmd].apply(fsn, args.slice(1));
+            } catch (e) { rv = e; }
+            hist.append(P(T(this.value), {className:'cmd'}));
+            if (rv != null) {
+              if (rv.length && typeof rv == 'object') {
+                if (rv[0].name != null) {
+                  var p = P();
+                  hist.append(p);
+                  rv.forEach(function(e) {
+                    var hidden = (/^\./).test(e.name);
+                    p.append(SPAN(T(e.name), {
+                      className: (e.entries != null ? 'dir' : 'file') + (hidden ? ' small' : ''),
+                      style : {cursor: 'pointer'},
+                      onmousedown : function(ev) { ev.preventDefault(); },
+                      onclick : function(ev) {
+                        fsn.cd(e.getPath());
+                        if (e.entries != null) {
+                          cmdline.value = 'ls';
+                          cmdline.onkeydown({which: Key.ENTER});
+                        }
+                        ev.preventDefault();
+                      }
+                    }));
+                    p.append(T('\t'));
+                  });
+                } else {
+                  hist.append(P(T(rv.join('\t'))));
+                }
+              } else {
+                hist.append(P(T(rv.toString())));
+              }
+            }
+            hist.lastChild.scrollIntoView();
+            if (cmdHistory[cmdHistory.length-1] != this.value)
+              cmdHistory.push(this.value);
+            cmdHistory.index = cmdHistory.length - 1;
+            localStorage.cmdHistory = JSON.stringify(cmdHistory);
+            this.value = '';
+
+            var cdir = byId('currentDir');
+            cdir.innerHTML = '';
+            var p = P();
+            var o = fsn.current;
+            var a = [];
+            while (o) {
+              a.unshift(o);
+              o = o.parent;
+            }
+            a.forEach(function(e) {
+              if (e.name == '/') {
+                p.append(T('cwd: '));
+              } else {
+                p.append(T('/'));
+              }
+              p.append(SPAN(T(e.name), {
+                className: e.entries != null ? 'dir' : 'file',
+                style : {cursor: 'pointer'},
+                onmousedown : function(ev) { ev.preventDefault(); },
+                onclick : function(ev) {
+                  fsn.cd(e.getPath());
+                  if (e.entries != null) {
+                    cmdline.value = 'ls';
+                    cmdline.onkeydown({which: Key.ENTER});
+                  }
+                  ev.preventDefault();
+                }
+              }));
+            });
+            cdir.appendChild(p);
+
+
+          /* Tab-completion */
+          } else if (Key.match(ev, Key.TAB)) {
+            var words = this.value.split(' ');
+            var v = words.last();
+            var segs = v.split('/')
+            var path = segs.slice(0,-1).join('/');
+            var lst = fsn.ls(path);
+            var name = segs.last();
+            var completion = lst.find(function(s) {
+              return s.name.slice(0,name.length) == name;
+            });
+            if (completion) {
+              segs[segs.length-1] = completion.name;
+              words[words.length-1] = segs.join('/');
+              this.value = words.join(' ');
+            }
+            ev.preventDefault();
+
+
+          /* History navigation */
+          } else if (Key.match(ev, Key.UP)) {
+            this.value = cmdHistory[cmdHistory.index];
+            var idx = Math.max(0, cmdHistory.index-1);
+            cmdHistory.index = idx;
+            ev.preventDefault();
+
+          } else if (Key.match(ev, Key.DOWN)) {
+            var idx = Math.min(cmdHistory.length-1, cmdHistory.index+1);
+            this.value = cmdHistory[idx];
+            cmdHistory.index = idx;
+            ev.preventDefault();
+          }
+        };
+      })();
+
+      replaceSubTree = function(path, pathlist) {
+        var tree = FSN.buildTreeFromPathList(pathlist);
+        var entry = fsn.getEntry(path);
+        var parent = entry.parent;
+        tree.name = entry.name;
+        parent.removeEntry(entry);
+        parent.addEntry(tree);
+        fsnRender.updateLayoutPath(tree.getPath());
+      };
+
+      window.addEventListener('message', function(e) {
+        /*if (e.source.location.hostname != 'localhost') {
+          console.log('Error: attempted to postMessage from ' + e.origin + '  not allowed.');
+        } else {*/
+          var message = e.data;
+          switch (message.cmd) {
+            case 'build':
+              buildTreeFromPathList(message.data);
+              break;
+            case 'replaceSubTree':
+              replaceSubTree(message.data.path, message.data.pathlist);
+              break;
+            case 'cd':
+              fsn.cd(message.data);
+              break;
+            case 'mkdir':
+              fsn.mkdir(message.data);
+              break;
+            case 'mv':
+              fsn.mv(message.data.src, message.data.dst);
+              break;
+            case 'cp':
+              fsn.cp(message.data.src, message.data.dst);
+              break;
+            case 'touch':
+              fsn.touch(message.data);
+              break;
+            case 'update3d':
+              fsnRender.updateLayoutPath(message.data);
+              break;
+            case 'rm':
+              fsn.rm(message.data);
+              break;
+          }
+        //}
+      }, false);
+    </script>
+  </body>
+</html>

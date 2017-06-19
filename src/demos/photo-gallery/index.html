@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<!--
+Copyright 2011 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Author: Eric Bidelman (ericbidelman@chromium.org)
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="chrome=1" />
+<title>Photo Gallery</title>
+<style>
+html, body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font: 10pt normal 'Myriad Pro', 'Droid Sans', Arial, sans-serif;
+  background: -webkit-radial-gradient(center center, white, #999) no-repeat;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+}
+.dropping {
+  background: red;
+}
+.hidden {
+  display: none !important;
+}
+header {
+  margin: 1em 1em 0 1em;
+  position: absolute;
+}
+header > * {
+  vertical-align: middle;
+}
+label {
+  cursor: pointer;
+}
+button {
+  font-weight: bold;
+  text-shadow: 0 1px 0 white;
+  background: -webkit-gradient(linear, 0% 40%, 0% 70%, from(#F9F9F9), to(#E3E3E3));
+  border: 1px solid #777;
+  -webkit-border-radius: 3px;
+  border-radius: 3px;
+  margin: 0 8px 0 0;
+  color: black;
+  padding: 5px 8px;
+  outline: none;
+  white-space: nowrap;
+  -webkit-box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+  cursor: pointer;
+  vertical-align: middle;
+  -webkit-user-select:none;
+  user-select: none;
+}
+button:not([disabled]):hover {
+  border: 1px solid #444;
+  background: -moz-linear-gradient(#fff, #ccc);
+  background: -webkit-linear-gradient(#fff, #ccc);
+}
+button:not([disabled]):active {
+  background: -webkit-gradient(linear, 0% 40%, 0% 70%, from(#E3E3E3), to(#F9F9F9));
+}
+button[disabled] {
+  color: #ccc;
+}
+#log {
+  font-size: 14pt;
+  height: 200px;
+  overflow: auto;
+  border: 1px solid #ccc;
+  margin: 0;
+  padding: 10px;
+  box-sizing: border-box;
+  background-color: #fff;
+}
+#progress {
+  padding: 5px 20px 3px 20px;
+  -webkit-border-radius: 20px;
+  border-radius: 20px;
+  display: inline-block;
+  background-color: white;
+  -webkit-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5) inset;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  opacity: 0;
+  -webkit-transition: all 600ms cubic-bezier(0.260, 0.860, 0.440, 0.985);
+  -webkit-transform: translate3d(0,25px,0);
+}
+#progress:after {
+  content: attr(data-percent) '%';
+  margin-left: 5px;
+  font-weight: bold;
+}
+#progress progress {
+  width: 150px;
+}
+#progress.show {
+  opacity: 1;
+  -webkit-transform: translate3d(0,0,0);
+}
+section {
+  display: -webkit-box;
+  -webkit-box-pack: center;
+  -webkit-box-align: center;
+  -webkit-box-flex: 1;
+}
+section > * {
+  display: -webkit-box;
+   -webkit-box-pack: center;
+   -webkit-box-align: center;
+}
+#container {
+  margin: 0 2em;
+  -webkit-user-select: none;
+}
+#results {
+  width: 400px;
+  text-align: center;
+  overflow-y: hidden;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 5px;
+  -webkit-transform-style: preserve-3d;
+  -webkit-perspective: 600px;
+  -webkit-perspective-origin: 50% 15%;
+}
+#results::-webkit-scrollbar {
+  background-color: rgba(55, 55, 55, 0.5);
+  height: 5px;
+  border-radius: 1ex;
+}
+#results::-webkit-scrollbar-thumb {
+  border-top: 1px solid #fff;
+  background: #ccc -webkit-linear-gradient(top, rgb(240, 240, 240), rgb(210, 210, 210));
+  border-radius: 1ex;
+}
+#results img {
+  max-height: 400px;
+  width: 400px;
+  vertical-align: middle;
+  margin-right: 12px;
+  opacity: 0.2;
+  -webkit-mask-image: url(mask.png);
+  -webkit-mask-position: 50% 50%;
+  -webkit-mask-size: 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-transition: all 800ms cubic-bezier(0.26, 0.86, 0.44, 0.985);
+}
+#results img:last-child {
+  margin-right: 0;
+}
+#results img.before {
+ /* -webkit-transform: rotate3d(0,1,0, 90deg) translateX(1000px);*/
+  /*-webkit-transform: translate3d(-100%, 0, 0) rotateY(-90deg) translate3d(-100%, 0, 0);*/
+  -webkit-transform: scale(0.8) rotate3d(0,0,1,30deg);
+}
+#results img.selected {
+  opacity: 1;
+}
+#results img.selected + img {
+  /*-webkit-transform: rotate3d(0,1,0,0deg) translateX(0);*/
+  /*-webkit-transform: translate3d(100%, 0, 0) rotateY(90deg) translate3d(100%, 0, 0);*/
+  -webkit-transform: scale(0.8) rotate3d(0,0,1,-30deg);
+}
+.arrow {
+  width: 35px;
+  height: 200px;
+  background-color: rgba(255,255,255,0.4);
+  border-radius: 25px;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.4) inset;
+  cursor: pointer;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAEXUlEQVR42tWZSUsrQRDH5xv4vkH8CuK+7/uSuO8mGhFFNHFHwV1RQZ24XlRG0YtfwUu8qChCwLvM1Vsu3uv1v3mJPs02SSeZFBTCmJ70L1VdXYskCZKnp6dkRVEsBwcHjq2trfuNjQ11ZWWFlpeXaWlpiRYXF2l1dVVdX1+/39/fd1xcXFiwRtKDYCNsQ/bNzU2VbZJveGZmhsbHx2l4eJisViv19fVRb28v156eHjKbzfw5/o/Pzc/Pq8fHx/a4QOFLZVm+ZL8u/8Wnp6dpaGiI+vv7yWKxcMWGf0J0d3dz7erqos7OTuro6OCKZyMjI8QseBkTIFVV/wCAuQ0HsNlsNDAwwDVciPb2dmpra6PW1laueA+z7CW+KyoQt7e3JuZC7rW1NbLb7dw9REO0tLRQc3MzV/Yu9/n5uUkoxMnJiQNWWFhY4C4UbYimpiZqbGzkf+fm5hxCXGl3d9cJiMnJSRocHIwZhMlk4mo0GvE9zrBdDQt3dnZccKWxsbG4QTQ0NFB9fT3WucKCgSUAMTo6GncIaF1dHT7v1ARxenoqw530YAkPRG1tLVf2Tjnk6BTJmQBAtCBqamqourqapqamTEHPBUIsopNeIaqqqqiystLtcrn8nxeHw6HgXIQTYmMF8Q8EzxS/aQdcKpzLLtYQFRUVVF5eTizLSPZpDaQd0YQAgCgIaGlpqfLLGkgAteZO8YQoKysDCLGS4csqLKexwRqJBvFPbV4Q1BNIxSOFgLy8vPC1sYAoKSmh4uJi1etWKIpCrScCWcIjn5+fxNIbTRAACAOCioqKsN9k6erqyozKToQ7/ZTn52e+NpoQ0IKCArN0eHgoozwVcSZ8CazDDmTUIAoLCwEiS9vb207UziIOdiBhLszXRQGC8vPznRK6HWgEiIhOwQTWwaUrGAKqSmjZ+Op2hBNiQ5XHx0e+VhAE5eXlkYT7Q9Q9oUVgHURLERC5ubkkIWKJuuy0yMfHB++BiYDgIOgAirqxQ7XE9fW1MEtAc3JySEIbU1TaEUzu7u74WtEQ2dnZKqKWExFLRO7kT97e3mh2dlbYwf4BQVlZWU5pb29PRo4lIgH05Ubs/UKjkw8IyszMlJH5mnGPiMhiv8vNzY3wEOsLApqRkWGWHh4eDLjZRaTiHjdCliDwsgsIwayBZwaeAaO1L6qe0HJjAyBSCGYN1VuPHB0d2RC1EhCC0tPTvworuBfmEwkIQSkpKYb/6naWcymJBsH0d0sIVkFxpRcIAASB+G0Nj7AEUkkUiNTUVMVvp/H9/T0JkyK9Q6SlpbkZSFLA/u/Z2ZkRFtExBNQYUkee5UWyjiFkTTMSjLv0BsHcyal5YoXzgnGXjiBcQc9FIBiMu/RgibAhvgvGXQlzJoLJxMSEEZOiWIbYkKOTVnl9fU3CpCgWl50QVwphdG3AkCUKEIrftCMGQDa09iOAUJGKxwXAl1itVgO64mgooxeLNqYPCBWNAtTYKE+9lZ0A+Qv6Te0PH//njwAAAABJRU5ErkJggg==");
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  background-size: 75%;
+  opacity: 0;
+  -webkit-transition: opacity 200ms ease-in-out;
+}
+.arrow:hover {
+  opacity: 1;
+}
+.arrow:active {
+  position: relative;
+  top: 1px;
+  left: 1px;
+}
+.arrow.left {
+  -webkit-transform: rotate(180deg);
+}
+.arrow.hidden {
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <button onclick="loadZip('../photos.zip')">Load photos.zip</button>
+  <input type="checkbox" id="debug"> <label for="debug">View output</label>
+</header>
+<section>
+  <div class="arrow left hidden"></div>
+  <div id="container"></div>
+  <div class="arrow right hidden"></div>
+</section>
+
+
+<pre id="log" class="hidden"></pre>
+
+<script src="js/utils.js"></script>
+<script>
+window.URL = window.URL || window.webkitURL;
+
+function DNDFileController(selector) {
+  var el_ = document.querySelector(selector);
+
+  this.dragenter = function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    //el_.classList.add('dropping');
+  };
+
+  this.dragover = function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+  };
+
+  this.dragleave = function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    //el_.classList.remove('dropping');
+  };
+
+  this.drop = function(e) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    //el_.classList.remove('dropping');
+
+    var file = e.dataTransfer.files[0]; // TODO(ericbidelman): handle more than one file.
+    if (file.type.match(/application\/zip/)) {
+      loadZip(file, true);
+    }
+  };
+
+  el_.addEventListener("dragenter", this.dragenter, false);
+  el_.addEventListener("dragover", this.dragover, false);
+  el_.addEventListener("dragleave", this.dragleave, false);
+  el_.addEventListener("drop", this.drop, false);
+};
+
+
+var dnd = new DNDFileController('body');
+
+
+// Load Element.dataset pollyfill.
+/*var foo = document.createElement('div');
+if (!foo.dataset) {
+  var script = document.createElement('script');
+  script.src = 'js/dataset.min.js';
+  document.head.appendChild(script);
+}*/
+
+// Converts a NodeList into an Array.
+var toArray = function(list) {
+  return Array.prototype.slice.call(list, 0);
+};
+
+var debug = document.querySelector('#debug');
+var log = document.getElementById('log');
+var progres = null;
+var progressBar = null;
+var worker = null;
+var imgIndex = 0;
+
+var enableLeft = function(imgs) {
+  if (imgIndex > 0) {
+    toArray(imgs).forEach(function(el, i) {
+      el.classList.remove('selected');
+      el.classList.remove('before');
+    });
+    imgs[--imgIndex].classList.add('selected');
+    if (imgIndex > 0) {
+      imgs[imgIndex - 1].classList.add('before');
+    }
+  }
+};
+
+var enableRight = function(imgs) {
+  if (imgIndex < imgs.length - 1) {
+    toArray(imgs).forEach(function(el, i) {
+      el.classList.remove('selected');
+      el.classList.remove('before');
+    });
+    imgs[imgIndex].classList.add('before');
+    imgs[++imgIndex].classList.add('selected');
+  }
+};
+
+var scrollViewPort = function(direction) {
+  var imgs = document.querySelectorAll('#results img');
+  if (imgs.length) {
+    var marginRight = window.getComputedStyle(imgs[0]).getPropertyValue('margin-right');
+    var imgWidth = window.getComputedStyle(imgs[0]).getPropertyValue('width');
+    document.querySelector('#results').scrollLeft += direction * (parseInt(imgWidth) + parseInt(marginRight));
+    //document.querySelector('#results').style.webkitTransform = 'translate3d(' + (direction * imgIndex * 300) + 'px,0,0)';
+  }
+
+  if (direction == -1) {
+    enableLeft(imgs);
+  } else {
+    enableRight(imgs);
+  }
+};
+
+var onKeyDown = function(e) {
+
+  switch (e.keyCode) {
+    case 37: // left
+      scrollViewPort(-1);
+      e.preventDefault();
+      break;
+    case 39: // right
+      scrollViewPort(1);
+      e.preventDefault();
+      break;
+    default:
+      // noop
+  }
+};
+
+document.querySelector('.arrow.right').addEventListener('click', function(e) {
+  scrollViewPort(1);
+}, false);
+
+document.querySelector('.arrow.left').addEventListener('click', function(e) {
+  scrollViewPort(-1);
+}, false);
+
+
+debug.addEventListener('change', function(e) {
+  log.classList.toggle('hidden');
+}, false);
+
+
+// Unzip with Worker.
+function loadZip(url, opt_isBlobURL) {
+  var isBlobURL = opt_isBlobURL || false;
+
+  logger.clear();
+  imgIndex = 0;
+
+  // Make arrow navigators visible.
+  toArray(document.querySelectorAll('.arrow.hidden')).forEach(function(el, i) {
+    el.classList.remove('hidden');
+  });
+
+  window.removeEventListener('keydown', onKeyDown, false);
+
+  // Terminate a pending unzip but keep progress bar showing.
+  if (worker) {
+    worker.terminate();
+    doUnzip(url, isBlobURL);
+  } else {
+    container.innerHTML = '<div id="progress" data-percent="0"><progress min="0" max="100"></progress></div>';
+    progress = document.querySelector('#progress');
+    progressBar = progress.querySelector('progress');
+  }
+
+  var transEnd = function(e) {
+    this.removeEventListener('webkitTransitionEnd', transEnd, false);
+    doUnzip(url, isBlobURL);
+  };
+  progress.addEventListener('webkitTransitionEnd', transEnd, false);
+
+  progress.classList.add('show');
+}
+
+function doUnzip(url, isBlobURL) {
+  progressBar.value = 0;
+  progress.dataset.percent = 0;
+  progressBar.textContent = '0%';
+
+  worker = new Worker('js/worker.js');
+  worker.onmessage = function(e) {
+    var data = e.data;
+
+    if (data.status && data.status == 'error') {
+      logger.log('Error: ' + data.message);
+      progressBar.value = 0;
+      progressBar.textContent = progressBar.value + '%';
+      return;
+    } else if (typeof data === typeof '' || data.message) {
+      logger.log(data.message || data);
+      return;
+    }
+
+    if (data.isDone) {
+      var transEnd = function(e) {
+        this.removeEventListener('webkitTransitionEnd', transEnd, false);
+
+        container.innerHTML = '';
+
+        var fragment = document.createDocumentFragment();
+
+        var div = document.createElement('div');
+        div.id = 'results';
+
+        var results = fragment.appendChild(div);
+
+        data.report.localFiles.forEach(function(zipFile, i) {
+          var img = document.createElement('img');
+          //img.src = Utils.toDataURL('image/png', zipFile.fileData);  // dataURL adds 33% overhead :(
+          img.src = Utils.toObjectURL('image/png', zipFile.fileData);
+
+          if (i == 0) {
+            img.classList.add('selected');
+          }
+
+          results.appendChild(img);
+
+          window.URL.revokeObjectURL(img.src);
+        });
+
+        container.appendChild(results);
+
+        window.addEventListener('keydown', onKeyDown, false);
+
+        worker = null;
+      };
+
+      progress.addEventListener('webkitTransitionEnd', transEnd, false);
+      progress.classList.remove('show');
+
+    } else {
+      progressBar.value = Math.round((data.unzipped / data.total) * 100);
+      progressBar.textContent = progressBar.value + '%';
+      progress.dataset.percent = progressBar.value;
+    }
+  };
+
+  worker.onerror = function(e) {
+    logger.log(['ERROR: Line ', e.lineno, ' in ', e.filename,
+                ': ', e.message].join(''));
+  };
+
+  if (!isBlobURL) {
+     worker.postMessage({url: url, debug: debug.checked});
+  } else {
+     worker.postMessage({file: url, debug: debug.checked});
+  }
+}
+/*
+function loadZip_NoWorker(url) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', url, true);
+  xhr.onload = function() {
+    var arrayBuffer = xhr.response;
+
+    var recvMessage = function(e) {
+      var event = {data: e};
+      if (typeof event.data == typeof {}) {
+        var progress = event.data;
+        if (progress.isValid) {
+          if (progress.localFiles && progress.localFiles.length) {
+            progress.localFiles.forEach(function(zipFile, i) {
+              var img = document.createElement('img');
+              //var url = Utils.toDataURL('image/png', zipFile.fileData);  // dataURL adds 33% overhead :(
+              img.src = Utils.toObjectURL('image/png', zipFile.fileData);
+              document.body.appendChild(img);
+              window.URL.revokeObjectURL(img.src);
+            });
+          }
+        }
+        if (progress.isDone) {
+          logger.log('Unzipping DONE');
+        }
+      } else {
+        logger.log(event.data);
+      }
+    }
+
+    unzip.postMessage({buffer: arrayBuffer, debug: true, postMessage: recvMessage});
+  }
+  xhr.responseType = 'arraybuffer'; // xhr.responseType = 'blob' doesn't work (crbug.com/52486)
+  xhr.send();
+}*/
+</script>
+<script>
+function Logger(id) {
+  this.el = document.getElementById(id);
+}
+Logger.prototype.log = function(msg) {
+  var fragment = document.createDocumentFragment();
+  fragment.appendChild(document.createTextNode(msg));
+  fragment.appendChild(document.createElement('br'));
+  this.el.appendChild(fragment);
+};
+
+Logger.prototype.clear = function() {
+  this.el.textContent = '';
+};
+
+var logger = new Logger('log');
+</script>
+<script>
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-23384572-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+</body>
+</html>

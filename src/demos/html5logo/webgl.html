@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebGL HTML5 logo</title>
+    <script src="glMatrix-0.9.5.min.js"></script> 
+    <script src="webgl.js"></script>
+    <script id="shader-fs" type="x-shader/x-fragment"> 
+        #ifdef GL_ES
+        precision highp float;
+        #endif
+
+        varying vec2 vTextureCoord;
+        uniform sampler2D uSampler;
+        
+        void main(void) {
+            //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            gl_FragColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+        }
+    </script> 
+    <script id="shader-vs" type="x-shader/x-vertex"> 
+        attribute vec3 aVertexPosition;
+        attribute vec2 aTextureCoord;
+        
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+
+        varying vec2 vTextureCoord;
+        
+        void main(void) {
+            gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+            vTextureCoord = aTextureCoord;
+        }
+    </script> 
+    <script>
+      function onLoad(evt) {
+        console.log('onLoad');
+        var canvas = document.querySelector('#output');
+        start(canvas, 500, 500, 'shader-fs', 'shader-vs');
+        document.querySelector('input').addEventListener('change', function(evt) {
+          if (!this.checked) {
+            stop = true;
+          }
+        });
+      };
+
+      window.addEventListener('load', onLoad);
+    </script>
+  </head>
+  <body>
+    <div id="outputtext"></div>
+    <canvas id="output"></canvas>
+    <label>Animate</label><input type="checkbox" checked />
+  </body>
+</html>

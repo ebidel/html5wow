@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<!--
+Copyright 2011 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Author: Eric Bidelman (ericbidelman@chromium.org)
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="chrome=1" />
+<title>Tone Generator</title>
+<style>
+html {
+  height: 100%;
+}
+body {
+  color: #333;
+  font: 10pt 'Droid Sans', Arial;
+}
+a {
+  color: navy;
+}
+h3 {
+  margin: 0 0 10px 0;
+}
+canvas {
+  border: 2px solid black;
+  border-radius: 5px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+  background: -webkit-linear-gradient(top, white 60%, #eee);
+  background: -moz-linear-gradient(top, white 60%, #eee);
+}
+details {
+  margin: 0 0 1em 0;
+}
+summary {
+  cursor: pointer;
+}
+button {
+  outline: none;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: pointer;
+  text-shadow: 1px 1px #fff;
+  font-weight: 700;
+  font-size: 10pt;
+  color: black;
+  background: -webkit-linear-gradient(top, #F9F9F9 40%, #E3E3E3 70%);
+  background: -moz-linear-gradient(top, #F9F9F9 40%, #E3E3E3 70%);
+  border: 1px solid #999;
+  border-radius: 3px;
+  padding: 5px 8px;
+  margin: 0;
+  vertical-align: middle;
+}
+button:not([disabled]):hover {
+  border-color: black;
+}
+button:not([disabled]):active,
+button:not([disabled]).active {
+  background: -webkit-linear-gradient(top, #E3E3E3 40%, #F9F9F9 70%);
+  background: -moz-linear-gradient(top, #E3E3E3 40%, #F9F9F9 70%);
+}
+button.active {
+  border-color: black;
+}
+button[disabled] {
+  color: #ccc;
+}
+input, button {
+   vertical-align: middle;
+}
+input[type="range"] {
+  width: 75px;
+}
+button.selected {
+  border-color: #ffcc00;
+}
+#buttons {
+  margin: 0.5em 5px 0 0;
+}
+#playButton {
+  margin-right: 15px;
+}
+#hz {
+  font-size: 110%;
+  font-weight: bold;
+  text-shadow: 0 0 3px black;
+  color: white;
+  letter-spacing: 1px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+#hz::after {
+  content: 'Hz';
+}
+#controls {
+  margin-top: 1em;
+}
+#controls > span {
+  display: inline-block;
+  width: 70px;
+  font-weight: bold;
+}
+#controls > input[type="range"] {
+  margin-right: 10px;
+}
+</style>
+<script type="javascript/worker" id="fftWorker">
+self.onmessage = function(e) {
+  var data = e.data;
+
+  if (data.url) {
+    // Need to inject the current URL this app is runnning from so importScripts
+    // works properly with window.URL.createObjectURL() and doesn't throw origin
+    // mismatch errors.
+    var url = data.url;
+    var index = url.indexOf('index.html');
+    if (index != -1) {
+      url = url.substring(0, index);
+    }
+    importScripts(url + 'dsp.js');
+  } else if(data.bufferSize && data.sampleRate) {
+    var fft = new FFT(data.bufferSize, data.sampleRate);
+    fft.forward(data.signal);
+    self.postMessage(fft.spectrum.subarray(300)); // subarray fits fft into canvas array.
+  }
+};
+</script>
+</head>
+<body>
+
+<div id="container">
+  <canvas id="waveform" width="370" height="150" style="float:left;margin-right:15px"></canvas>
+  <canvas id="fft" width="370" height="150"></canvas>
+
+  <div id="buttons">
+    <button id="playButton" onclick="playPause(this)">Play</button>
+    <button onclick="setWaveform(this, DSP.SINE)" class="active">SINE</button>
+    <button onclick="setWaveform(this, DSP.TRIANGLE)">TRIANGLE</button>
+    <button onclick="setWaveform(this, DSP.SAW)">SAW</button>
+    <button onclick="setWaveform(this, DSP.SQUARE)">SQUARE</button>
+    <span id="hz">440</span>
+  </div>
+
+  <div id="controls">
+    <span>Amplitude:</span><input type="range" min="0" max="3" value="0.5" step="0.05" id="gain">
+    <span>Frequency:</span><input type="range" value="440" min="220" max="1760" step="10" id="frequency">
+  </div>
+</div>
+
+<script src="dsp.js"></script>
+<script>
+var CanvasHelper = function(waveFormId, fftId) {
+
+  var canvas_ = document.getElementById(waveFormId);
+  var ctx_ = canvas_.getContext('2d');
+  //canvas_.width = canvas_.parentNode.clientWidth;
+  var width_ = canvas_.width;
+  var height_ = canvas_.height;
+
+  var fft_ = document.getElementById(fftId);
+  fft_.width = width_;
+  var fft_ctx_ = fft_.getContext('2d');
+
+  return {
+    line: function(ctx, x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#000";
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.closePath();
+    },
+
+    drawGrid: function(labelPos) {
+      var step = (Math.PI / 2) * 16;
+      var count = 0;
+      var period = 2;
+
+      for (var i = 0; i < width_; i += step) {
+        ctx_.beginPath();
+        ctx_.lineWidth = 1;
+        ctx_.strokeStyle = "#ccc";
+        ctx_.moveTo(i, height_);
+        ctx_.lineTo(i, 0);
+        ctx_.stroke();
+        ctx_.closePath();
+
+        if (count == 2) {
+          // Draw y-axis for 2PI marks.
+          ctx_.beginPath();
+          ctx_.lineWidth = 1;
+          ctx_.strokeStyle = "#000";
+          ctx_.moveTo(i, height_ / 2 - 5);
+          ctx_.lineTo(i, height_ / 2 + 5);
+          ctx_.stroke();
+          ctx_.closePath();
+
+        } else if (count == 4) {
+          // Draw y-axis for 2PI marks.
+          ctx_.beginPath();
+          ctx_.lineWidth = 1;
+          ctx_.strokeStyle = "#000";
+          ctx_.moveTo(i, 0);
+          ctx_.lineTo(i, height_);
+          ctx_.stroke();
+          ctx_.closePath();
+
+          // Draw label with white background to cover the axises.
+          var label = period + 'π';
+          ctx_.fillStyle = 'white';
+          var textWidth = ctx_.measureText(label).width;
+          var textHeight = 10;
+          var yPos = labelPos == 'center' ? height_ / 2 :
+                     labelPos == 'bottom' ? height_ - textHeight - 5 : height_ / 2;
+          ctx_.fillRect(i - textWidth / 2, yPos + 2, textWidth, textHeight + 2);
+          ctx_.fill();
+          ctx_.fillStyle = 'navy';
+          ctx_.fillText(label, i - textWidth / 2, yPos + textHeight + 2);
+          count = 0;
+          period += 2;
+        }
+
+        count++;
+      }
+
+      // Draw x-axis.
+      ctx_.beginPath();
+      ctx_.lineWidth = 2;
+      ctx_.strokeStyle = "#000000";
+      ctx_.moveTo(0, height_ / 2);
+      ctx_.lineTo(width_, height_ / 2);
+      ctx_.stroke();
+      ctx_.closePath();
+
+      return this;
+    },
+
+    render: function(data) {
+      var step = 1;//source.buffer.numberOfChannels;
+
+      this.clear().drawGrid('center');
+
+      ctx_.beginPath();
+      ctx_.strokeStyle = "#ff0000";
+      ctx_.lineWidth = 2;
+      ctx_.lineJoin = 'round';
+      ctx_.moveTo(0, height_ / 2 * (1 - data[0]));
+
+      for (var i = 1, j = step; i < width_; i++, j += step) {
+        ctx_.lineTo(i, height_ / 2 * (1 - data[j]));
+      }
+
+      ctx_.stroke();
+      ctx_.closePath();
+
+      return this;
+    },
+
+    renderFFT: function(spectrum) {
+      fft_ctx_.clearRect(0, 0, fft_.width, fft_.height);
+
+      fft_ctx_.beginPath();
+      fft_ctx_.lineWidth = 1;
+      fft_ctx_.strokeStyle = 'navy';
+
+      for (var i = 0, len = spectrum.length - 1; i < len; i += 4) {
+        fft_ctx_.lineTo(
+          2 * i/10, fft_.height - 10 - spectrum[i] * 512);
+      }
+      fft_ctx_.stroke();
+      fft_ctx_.closePath();
+    },
+
+    clear: function() {
+      ctx_.clearRect(0, 0, width_, height_);
+      fft_ctx_.clearRect(0, 0, fft_.width, fft_.height);
+      return this;
+    }
+  };
+};
+
+var play = function(el) {
+  audioIsPlaying = true;
+  canvasHelper.render(setupChannelData());
+  el.textContent = 'Stop';
+  if (source) {
+    source.noteOn(0);
+    source.connect(audioContext.destination);
+  }
+};
+
+var playPause = function(el) {
+  if (el.textContent == 'Play') {
+    play(el);
+  } else {
+    if (source) {
+      source.disconnect(0);
+    }
+    audioIsPlaying = false;
+    canvasHelper.clear().drawGrid('center');
+    el.textContent = 'Play';
+  }
+};
+
+var setupChannelData = function() {
+  var gain = document.getElementById('gain').value;
+  var freq = document.getElementById('frequency').value;
+
+  var osc = new Oscillator(waveFormType, freq, gain, NUM_SAMPLES, SAMPLE_RATE);
+  osc.generate();
+
+  if (audioIsPlaying) {
+    fftWorker.postMessage(
+        {bufferSize: NUM_SAMPLES, sampleRate: SAMPLE_RATE, signal: osc.signal});
+  }
+
+  if (source) {
+    source.buffer.getChannelData(0).set(osc.signal);
+    source.buffer.getChannelData(1).set(osc.signal);
+  } else {
+    audioContext.mozWriteAudio(osc.signal);
+  }
+
+  return osc.signal;
+}
+
+function setWaveform(el, type) {
+  waveFormType = type;
+  play(document.getElementById('playButton'));
+  var selected = document.querySelectorAll('.active');
+  for (var i = 0, e; e = selected[i]; ++i) {
+    e.classList.remove('active');
+  }
+  el.classList.add('active');
+}
+
+function loadInlineWorkers(callback) {
+  window.URL = window.URL || window.webkitURL || null;
+  window.BlobBuilder = window.WebKitBlobBuilder || window.MozBlobBuilder || window.BlobBuilder;
+
+  var workers = []; // The var names created on the window object for each worker.
+  for (var i = 0, script; script = document.scripts[i]; ++i) {
+    if (script.type === 'javascript/worker') {
+      var bb = new BlobBuilder();
+      bb.append(script.textContent);
+      window[script.id] = new Worker(window.URL.createObjectURL(bb.getBlob()));
+      workers.push(window[script.id]);
+    }
+  }
+  callback(workers);
+}
+
+const SAMPLE_RATE = 44100;
+const NUM_SAMPLES = 65536;
+const NUM_CHANNELS = 2;
+
+var audioContext = null;
+var source = null;
+var waveFormType = DSP.SINE;
+var audioIsPlaying = false;
+var canvasHelper = new CanvasHelper('waveform', 'fft');
+
+document.getElementById('gain').addEventListener('change', function(e) {
+  var signal = setupChannelData();
+  if (audioIsPlaying) {
+    canvasHelper.render(signal);
+  }
+}, false);
+
+document.getElementById('frequency').addEventListener('change', function(e) {
+  var signal = setupChannelData();
+  if (audioIsPlaying) {
+    canvasHelper.render(signal);
+  }
+  document.getElementById('hz').textContent = this.value;
+}, false);
+
+
+loadInlineWorkers(function(workers) {
+  if (window.fftWorker) { // step listeners if we created this worker.
+    fftWorker.postMessage({url: document.location.href});
+
+    fftWorker.onmessage = function(e) {
+      if (audioIsPlaying) {
+        canvasHelper.renderFFT(e.data);
+      }
+    };
+
+    fftWorker.onerror = function(e) {
+      console.log(e);
+    };
+  }
+});
+
+(function initAudio() {
+  window.AudioContext = window.AudioContext || window.webkitAudioContext;
+
+  if (window.AudioContext) {
+    audioContext = new AudioContext();
+    source = audioContext.createBufferSource();
+    source.buffer = audioContext.createBuffer(NUM_CHANNELS, NUM_SAMPLES, SAMPLE_RATE);
+    source.looping = true;
+  } else { // Try setup for moz audio.
+    audioContext = new Audio();
+    if (audioContext.mozSetup) {
+      audioContext.mozSetup(NUM_CHANNELS, SAMPLE_RATE);
+    }
+  }
+  canvasHelper.clear().drawGrid('center');
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+application: html5wow-hrd
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+
+- url: /favicon\.ico
+  static_files: src/favicon.ico
+  upload: src/favicon\.ico
+
+- url: /assets
+  static_dir: assets
+  secure: optional
+
+- url: /demos
+  static_dir: src/demos
+  secure: optional
+
+- url: /images
+  static_dir: src/slides/images
+  secure: optional
+
+- url: /css
+  static_dir: src/slides/css
+  secure: optional
+
+- url: /js
+  static_dir: src/slides/js
+  secure: optional
+
+- url: /fonts
+  static_dir: src/slides/fonts
+  secure: optional
+
+- url: /sounds
+  static_dir: src/slides/sounds
+  secure: optional
+
+- url: /videos
+  static_dir: src/slides/videos
+  secure: optional
+
+- url: /(.*\.(appcache|manifest))
+  static_files: \1
+  mime_type: text/cache-manifest
+  upload: (.*\.(appcache|manifest))
+  expiration: "0s"
+
+- url: /(.*\.crx)
+  static_files: \1
+  mime_type: application/x-chrome-extension
+  upload: (.*\.crx)
+
+- url: /admin/.*
+  script: $PYTHON_LIB/google/appengine/ext/admin
+  login: admin
+  secure: always
+
+- url: /humans\.txt
+  static_files: src/slides/humans.txt
+  upload: src/slides/humans\.txt
+
+- url: /(.*)
+  static_files: src/slides/index.html
+  upload: src/slides/index.html

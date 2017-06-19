@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<!--
+Copyright 2011 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Author: Eric Bidelman (ericbidelman@chromium.org)
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="chrome=1" />
+<title>.Wav Generator</title>
+<link rel="stylesheet" type="text/css" href="http://fonts.googleapis.com/css?family=Molengo" />
+<style>
+html, body {
+  font: 15px normal 'Molengo', Trebuchet, Arial, sans-serif;
+  color: #444;
+}
+[contenteditable] {
+  border: 1px dashed transparent;
+  outline: none;
+}
+[contenteditable]:hover {
+  border: 1px dashed #999;
+}
+a {
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+ul, li {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+li {
+  padding-top: 5px;
+}
+button {
+  background: -webkit-gradient(linear, 0% 40%, 0% 70%, from(#F9F9F9), to(#E3E3E3));
+  border: 1px solid #ccc;
+  border-radius: 3px;
+
+  color: black;
+  padding: 5px 8px;
+  outline: none;
+  white-space: nowrap;
+  vertical-align: middle;
+  -webkit-user-select:none;
+  user-select: none;
+  cursor: pointer;
+}
+button:not([disabled]):hover {
+  border: 1px solid #939393;
+}
+button:not([disabled]):active {
+  background: -webkit-gradient(linear, 0% 40%, 0% 70%, from(#E3E3E3), to(#F9F9F9));
+}
+button[disabled] {
+  color: #ccc;
+}
+input[type='text'], textarea {
+  margin: 0;
+  padding: 5px;
+  border-radius: 3px;
+  border: 1px solid #ccc;
+  -webkit-box-shadow: 0 3px 3px #eee inset;
+  outline: none;
+}
+input[type='text'] {
+  vertical-align: middle;
+  width: 40px;
+}
+#file-name {
+  width: 100px;
+}
+#files {
+  margin: 10px 0;
+  float: left;
+}
+#files li {
+  -webkit-transition: opacity 0.2s ease-out;
+}
+#files li > img {
+  height: 16px;
+  width: 16px;
+}
+#files li > img,
+#files li > div {
+  float: left;
+}
+#files li.fadeout {
+  opacity: 0;
+}
+#files li div {
+  width: 130px;
+  margin: 0 5px;
+}
+#file-info {
+  margin: 14px 3em;
+  float: left;
+}
+#file-info textarea {
+  width: 400px;
+  height: 100px;
+}
+#file-info img {
+  height: 100px;
+  border: 1px solid black;
+}
+.error::before {
+  content: 'Error: ';
+}
+#log {
+  font: 90% normal 'Courier New';
+  clear: both;
+}
+#log p {
+  color: navy;
+  margin: 3px 0;
+}
+#log .error {
+  color: red;
+}
+label {
+  vertical-align: middle;
+  margin-right: 10px;
+  font-weight: bold;
+  width: 90px;
+  display: inline-block;
+}
+label:after {
+  content: ':';
+}
+td {
+  padding-right: 1em;
+}
+form {
+  border: 1px solid rgba(255,204,0,0.8);
+  padding: 15px;
+  margin-bottom: 10px;
+  background-color: rgba(255,204,0,0.25);
+}
+</style>
+</head>
+<body>
+
+<form>
+<table>
+  <tr>
+    <td><label for="channels">Channels</label><input type="text" name="channels" id="channels" size="2" value="2" /></td>
+    <td><label for="sampleRate">Sample rate</label><input type="text" name="sampleRate" id="sampleRate" size="4" value="2024" /> Hz</td>
+    <td rowspan="3">
+      <input type="text" id="file-name" placeholder="test.wav" value="test.wav" required>
+      <button onclick="saveWav(this.form);return false;">Save to file</button>
+    </td>
+  </tr>
+  <tr>
+    <td><label for="bitDepth">Bit depth</label><input type="text" name="bitDepth" id="bitDepth" size="2" value="16" /> bits/sample</td>
+    <td><label for="length">Length</label><input type="text" name="seconds" id="seconds" size="2" value="1" /> seconds</td>
+  </tr>
+  <tr>
+    <td><label for="volume">"Volume"</label><input type="text" name="volume" id="volume" size="6" value="32767" /></td>
+    <td><label for="frequency">Frequency</label><input type="text" name="frequency" id="frequency" size="6" value="440" title="For optimal results: frequency &le; sampleRate / 2"/> Hz</td>
+  </tr>
+</table>
+</form>
+
+<div>
+  <button onclick="openFS(this)">Open filesystem</button>
+  <button onclick="logger.clear()">Clear log</button>
+  <button onclick="window.location.reload()">Reload page</button>
+</div>
+
+<div id="files"><ul></ul></div>
+<div id="file-info"></div>
+
+<div id="log"></div>
+
+<script src="file.js" type="text/javascript"></script>
+<script>
+function Logger(id) {
+  this.el = document.getElementById('log');
+}
+Logger.prototype.log = function(msg) {
+  this.el.innerHTML += msg
+};
+
+Logger.prototype.clear = function() {
+  this.el.textContent = '';
+};
+
+var logger = new Logger('log');
+
+// =============================================================================
+var toArray = function(list) {
+  return Array.prototype.slice.call(list || [], 0);
+};
+
+var getCharCode = function(c) {
+  return c.charCodeAt();
+};
+
+function errorHandler(e) {
+console.log(e)
+  var msg = '';
+  switch (e.code) {
+    case FileError.QUOTA_EXCEEDED_ERR:
+      msg += 'QUOTA_EXCEEDED_ERR';
+      break;
+    case FileError.NOT_FOUND_ERR:
+      msg += 'NOT_FOUND_ERR';
+      break;
+    case FileError.SECURITY_ERR:
+      msg += 'SECURITY_ERR';
+      break;
+    case FileError.INVALID_MODIFICATION_ERR:
+      msg += 'INVALID_MODIFICATION_ERR';
+      break;
+    case FileError.INVALID_STATE_ERR:
+      msg += 'INVALID_STATE_ERR';
+      break;
+    default:
+      msg += 'Unknown Error';
+      break;
+  };
+  logger.log('<p class="error">' + msg + '</p>');
+}
+
+var ENTRIES = [];
+
+function createEntryHTML(entry, i) {
+  var img = entry.isDirectory ? '<img src="icon-folder.gif">' :
+                                '<img src="icon-file.gif">';
+  var html = [
+      img, '<div>', entry.name, '</div>',
+      ' <a href="javascript: "onclick="rm(', i, ', this);">remove</a> '];
+  if (entry.isFile) {
+    html.push('| <a href="javascript: "onclick="openFile(', i, ')">play</a> ',
+              '| <a href="javascript: "onclick="overwriteFile(', i, ', document.forms[0])">overwrite</a>');
+  }
+  return html.join('');
+}
+
+function addEntryToList(entry) {
+  ENTRIES.push(entry);
+
+  var li = document.createElement('li');
+  li.innerHTML = createEntryHTML(entry, ENTRIES.length - 1);
+  document.querySelector('#files ul').appendChild(li);
+}
+
+function openFS(button) {
+  filer.init(false, 1024*1024, function(fs) {
+    filer.readDir(function(entries) {
+      var html = [];
+      toArray(entries).forEach(function(entry, i) {
+        addEntryToList(entry);
+      });
+      logger.log('<p>Opened file system: ' + fs.name, + '</p>');
+      button.disabled = true;
+    }, errorHandler);
+  }, errorHandler);
+}
+
+function openFile(i) {
+  var entry = ENTRIES[i];
+
+  try {
+    filer.open(entry.name, function(file) {
+      var filePreview = document.querySelector('#file-info');
+      filePreview.innerHTML = ['<b>', file.name, '</b> (', file.type, ') - ',
+                               file.size, ' bytes'].join('');
+
+      if (file.type.match(/audio.*/)) {
+        // Set audio src by using filesystem URL.
+        var player = document.createElement('audio');
+        player.controls = true;
+        player.src = entry.toURL();
+        filePreview.appendChild(document.createElement('br'));
+        filePreview.appendChild(player);
+        player.load();
+        player.play();
+      }
+    }, errorHandler);
+  } catch(e) {
+    logger.log('<p class="error">' + e + '</p>');
+  }
+}
+
+function overwriteFile(i, opt_data) {
+  var entry = ENTRIES[i];
+
+  if (opt_data) {
+    var uInt8Array = generate({
+        channels: opt_data.channels.value,
+        sampleRate: opt_data.sampleRate.value,
+        bitDepth: opt_data.bitDepth.value,
+        seconds: opt_data.seconds.value,
+        volume: opt_data.volume.value,
+        frequency: opt_data.frequency.value}
+    );
+  } else {
+    var uInt8Array = generate({
+        channels: 2,
+        sampleRate: 2024,
+        bitDepth: 16,
+        seconds: 1,
+        volume: 32767,
+        frequency: 880}
+    );
+  }
+
+  try {
+    filer.write(entry.name, {data: uInt8Array.buffer, type: 'audio/wav'}, function(fileEntry, fileWriter) {
+      logger.log('<p>Wrote to "' + fileEntry.name + '"</p>');
+    }, errorHandler);
+  } catch(e) {
+    logger.log('<p class="error">' + e + '</p>');
+  }
+}
+
+function writeFile(name, opt_data) {
+
+  var uInt8Array = opt_data ? generate({
+      channels: opt_data.channels.value,
+      sampleRate: opt_data.sampleRate.value,
+      bitDepth: opt_data.bitDepth.value,
+      seconds: opt_data.seconds.value,
+      volume: opt_data.volume.value,
+      frequency: opt_data.frequency.value}) : generate();
+
+  try {
+    filer.write(name, {data: uInt8Array.buffer, type: 'audio/wav'}, function(fileEntry, fileWriter) {
+      addEntryToList(fileEntry);
+      logger.log('<p>Wrote ' + fileWriter.length + ' bytes to "' + fileEntry.name + '"</p>');
+    }, errorHandler);
+  } catch(e) {
+    logger.log('<p class="error">' + e + '</p>');
+  }
+}
+
+function rm(i, link) {
+  var entry = ENTRIES[i];
+  if (!confirm('Delete ' + entry.name + '?')) {
+    return;
+  }
+  filer.rm(entry, function() {
+    var li = link.parentNode;
+    li.classList.add('fadeout');
+    li.addEventListener('webkitTransitionEnd', function(e) {
+      this.parentNode.removeChild(this);
+    }, false);
+    //ENTRIES.splice(i, 1); // indices are stored on the DOM links. Removing them changes the length of the array.
+  }, errorHandler);
+}
+
+function saveWav(form) {
+  writeFile(document.querySelector('#file-name').value, form);
+}
+
+
+// From http://www.sk89q.com/playground/jswav/
+/**
+ * Generates audio samples and constructs a .wav file as a byte array.
+ * The .wav file format is specified here:
+ *  https://ccrma.stanford.edu/courses/422/projects/WaveFormat/
+ * @param {object} initObj Object containing channel sound params. For example:
+ *     {channels: 1, sampleRate: 2024, bitDepth: 16,
+ *      seconds: 1, volume: 32767, frequency: 880}
+ *     All fields are optional.
+ * @return {Uint8Array} A unsigned byte array in the range 0-255 where
+ *     each element represents an unsigned char (8-bit byte).
+ */
+function generate(initObj) {
+    var channels = initObj.channels || 2;
+    var sampleRate = initObj.sampleRate || 2024;
+    var bitsPerSample = initObj.bitDepth || 16;
+    var seconds = initObj.seconds || 1;
+    var volume = initObj.volume || 32767;
+    var frequency = initObj.frequency || 880;
+
+    var data = [];
+    var numSamples = 0;
+
+    // Generate the sine waveform
+    for (var i = 0; i < sampleRate * seconds; ++i) {
+      for (var c = 0; c < channels; ++c) {
+        var v = volume * Math.sin((2 * Math.PI) * (i / sampleRate) * frequency);
+        data = data.concat(pack('v', v));
+        numSamples++;
+      }
+    }
+
+    // Format sub-chunk
+    var chunk1 = 'fmt '.split('').map(getCharCode).concat( // Sub-chunk identifier
+        pack('V', 16), // Chunk length
+        pack('v', 1), // Audio format (1 is linear quantization)
+        pack('v', channels),
+        pack('V', sampleRate),
+        pack('V', sampleRate * channels * (bitsPerSample / 8)), // Bit rate
+        pack('v', channels * (bitsPerSample / 8)),
+        pack('v', bitsPerSample)
+    );
+
+    // Data sub-chunk (contains the sound)
+    var chunk2 = 'data'.split('').map(getCharCode).concat( // Sub-chunk identifier
+        pack('V', numSamples * channels * (bitsPerSample / 8)), // Chunk length
+        data
+    );
+
+    // Header
+    var header = 'RIFF'.split('').map(getCharCode).concat(
+        pack('V', 4 + (8 + chunk1.length) + (8 + chunk2.length)), // Length
+        'WAVE'.split('').map(getCharCode)
+    );
+
+    return new Uint8Array(header.concat(chunk1, chunk2));
+}
+
+// pack() emulation (http://php.net/manual/en/function.pack.php) for binary crunching
+function pack(fmt) {
+  var output = [];
+
+  var argi = 1;
+  for (var i = 0; i < fmt.length; i++) {
+    var c = fmt[i];
+    var arg = arguments[argi];
+    argi++;
+
+    switch (c) {
+      case "a":
+        output.push(arg[0], "\0");
+        break;
+      case "A":
+        output.push(arg[0], " ");
+        break;
+      case "C":
+      case "c":
+        output.push(arg);
+        break;
+      case "n":
+        output.push((arg >> 8) & 0xff, arg & 0xff);
+        break;
+      case "v":
+        output.push(arg & 0xff, (arg >> 8) & 0xff);
+        break;
+      case "N":
+        output.push((arg >> 24) & 0xff, (arg >> 16) & 0xff, (arg >> 8) & 0xff, arg & 0xff);
+        break;
+      case "V":
+        output.push(arg & 0xff, (arg >> 8) & 0xff, (arg >> 16) & 0xff, (arg >> 24) & 0xff);
+        break;
+      case "x":
+        argi--;
+        output.push("\0");
+        break;
+      default:
+        throw new Error("Unknown pack format character '" + c + "'");
+    }
+  }
+
+  return output;
+}
+</script>
+</body>
+</html>

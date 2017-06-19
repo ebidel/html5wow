@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebGL HTML5 logo</title>
+    <script src="glMatrix-0.9.5.min.js"></script> 
+    <script src="webgl.js"></script>
+    <script id="shader-fs" type="x-shader/x-fragment"> 
+        #ifdef GL_ES
+        precision highp float;
+        #endif
+
+        uniform float time;
+        varying vec2 vTextureCoord;
+        uniform sampler2D uSampler;
+        
+        void main(void) {
+            //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            vec2 q = gl_FragCoord.xy / vec2(250, 250); 
+            vec2 uv = 0.5 + (q-0.5)*(0.9 + 0.1*sin(0.2*time));
+            
+            vec3 oricol = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t)).xyz;
+            vec3 col;
+
+            //col.r = texture2D(uSampler,vec2(vTextureCoord.s+uv.x+0.003,vTextureCoord.t-uv.y)).x;
+            //col.g = texture2D(uSampler,vec2(vTextureCoord.s+uv.x+0.000,vTextureCoord.t-uv.y)).y;
+            //col.b = texture2D(uSampler,vec2(vTextureCoord.s+uv.x-0.003,vTextureCoord.t-uv.y)).z;
+
+            col.r = 0.5;
+            col.g = 0.5;
+            col.b = 0.5;
+
+            col = clamp(col*0.5+0.5*col*col*1.2,0.0,1.0);
+
+            col *= 0.5 + 0.5*16.0*uv.x*uv.y*(1.0-uv.x)*(1.0-uv.y);
+
+            //col *= vec3(0.8,1.0,0.7);
+
+            col *= 0.9+0.1*sin(10.0*time+uv.y*1000.0);
+
+            col *= 0.97+0.03*sin(110.0*time);
+
+            //float comp = smoothstep( 0.2, 0.7, sin(time) );
+            float comp = smoothstep(0.05, 0.1, sin(time / 100.0));
+            
+            col = mix( col, oricol, clamp(-2.0+2.0*q.x+3.0*comp,0.0,1.0) );
+            
+            gl_FragColor = vec4(col, 1.0);
+            //gl_FragColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+        }
+    </script> 
+    <script id="shader-vs" type="x-shader/x-vertex"> 
+        attribute vec3 aVertexPosition;
+        attribute vec2 aTextureCoord;
+        
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        
+        varying vec2 vTextureCoord;
+        
+        void main(void) {
+            gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+            vTextureCoord = aTextureCoord;
+        }
+    </script> 
+    <script>
+      function onLoad(evt) {
+        console.log('onLoad');
+        var canvas = document.querySelector('#output');
+        start(canvas, 500, 500, 'shader-fs', 'shader-vs');
+        document.querySelector('input').addEventListener('change', function(evt) {
+          if (!this.checked) {
+            stop = true;
+          }
+        });
+      };
+
+      window.addEventListener('load', onLoad);
+    </script>
+  </head>
+  <body>
+    <div id="outputtext"></div>
+    <canvas id="output"></canvas>
+    <label>Animate</label><input type="checkbox" checked />
+  </body>
+</html>

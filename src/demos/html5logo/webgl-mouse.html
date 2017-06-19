@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebGL HTML5 logo</title>
+    <style>
+      canvas {
+        border: 1px solid #000;
+      }
+    </style>
+    <script src="glMatrix-0.9.5.min.js"></script>
+    <script src="webgl-mouse.js"></script>
+    <script id="shader-fs" type="x-shader/x-fragment">
+        #ifdef GL_ES
+        precision highp float;
+        #endif
+
+        varying vec2 vTextureCoord;
+        uniform sampler2D uSampler;
+
+        void main(void) {
+            vec2 coords = vec2(vTextureCoord.s, vTextureCoord.t);
+            gl_FragColor = texture2D(uSampler, coords);
+        }
+    </script>
+    <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec2 aTextureCoord;
+
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+
+        varying vec2 vTextureCoord;
+
+        void main(void) {
+            gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+            vTextureCoord = aTextureCoord;
+        }
+    </script>
+    <script>
+      function onLoad(evt) {
+        var canvas = document.querySelector('#output');
+        var fragment = document.querySelector('#shader-fs').textContent;
+        var vertex = document.querySelector('#shader-vs').textContent;
+        var texture = 'html5-4.png';
+        var logo = new WebGlLogo(canvas, 500, 500, fragment, vertex, texture);
+        var input = document.querySelector('input');
+        input.addEventListener('change', function(evt) {
+          if (!this.checked) {
+            logo.stop();
+          }
+        });
+      };
+      window.addEventListener('load', onLoad);
+    </script>
+  </head>
+  <body>
+    <div id="outputtext"></div>
+    <canvas id="output"></canvas>
+    <label>Animate</label><input type="checkbox" checked />
+  </body>
+</html>

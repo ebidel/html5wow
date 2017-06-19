@@ -1,0 +1,52 @@
+License
+--------------------------------------------------------------------------------
+JQUERY:
+The jQuery library included in this software is originally by John Resig
+and is released under an MIT license. jQuery can be found at http://jquery.com/.
+
+OSGJS:
+The osgjs library included in this software is originally by 
+and is released under an LGPL v. 3.0 license. The library may be found here:
+https://github.com/cedricpinson/osgjs/
+
+JQUERY TREE:
+The jQuery tree plugin was written by Scott Jehl and licensed under an MIT 
+license: (filamentgroup.com/examples/mit-license.txt)
+http://code.google.com/p/dwpe/source/browse/trunk/tree/js/jQuery.tree.js
+
+GLMATRIX:
+The glMatrix library included in this project is from
+http://code.google.com/p/glmatrix/ and is released under a New BSD license:
+http://www.opensource.org/licenses/bsd-license.php
+
+UNZIP.JS / BINARY.JS
+The binary.js and unzip.js files included in this project are by Jeff Schiller and released under the MIT License: http://code.google.com/p/kthoom
+
+JSZIP
+The JSZip library is by Stuart Knightley and released under an MIT license:
+http://jszip.stuartk.co.uk/
+
+JS-UNZIP
+The js-unzip library is by August Lilleaas and licensed under the MIT license:
+https://github.com/augustl/js-unzip
+
+GZIP.JS
+The gzip.js file is released at https://gist.github.com/417483
+
+BLOB UTILS
+The /src/demos/photo-gallery/src/utils.js was written by Tyler Akins and has been placed in the public domain.  
+ 
+DSP.JS
+The dsp.js library included in this project is by Corban Brook and released
+under an MIT license: https://github.com/corbanbrook/dsp.js/
+
+SOURCE CODE:
+Except where othwerwise noted, the source code of this project is released 
+under the Apache 2 license, as described in the LICENSE file.
+
+FONTS:
+This project uses the following fonts:
+ * Raleway made by Matt McInerney
+   Available at http://www.theleagueofmoveabletype.com/fonts/14-raleway
+   Released under the Open Font License:
+   http://scripts.sil.org/cms/scripts/page.php?site_id=nrsi&id=OFL
